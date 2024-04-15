@@ -1,11 +1,10 @@
-package com.jmb_bms_server.data
+package com.jmb_bms_server.data.user
 
-import com.jmb_bms_server.Location
 import com.jmb_bms_server.customSerializers.AtomicReferenceSerializer
+import com.jmb_bms_server.data.location.Location
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import org.bson.types.ObjectId
-import java.util.Collections
 import java.util.concurrent.atomic.AtomicReference
 
 
@@ -22,7 +21,8 @@ data class UserProfile(
     @Serializable(with = AtomicReferenceSerializer::class)
     var connected: AtomicReference<Boolean> = AtomicReference(false),
     @Serializable(with = AtomicReferenceSerializer::class)
-    var teamEntry: AtomicReference<HashSet<@Contextual ObjectId>> = AtomicReference(HashSet())
+    var teamEntry: AtomicReference<HashSet<@Contextual ObjectId>> = AtomicReference(HashSet()),
+
 ){
 
     fun getStorableUserProfile() = StorableUserProfile(null,userName.get(),symbolCode.get(), location.get()?.getStorableLocation(),connected.get(),teamEntry.get())

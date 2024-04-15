@@ -1,7 +1,7 @@
 package com.jmb_bms_server.MessagesJsons
 
 
-import com.jmb_bms_server.Location
+import com.jmb_bms_server.data.location.Location
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi

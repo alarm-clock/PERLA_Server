@@ -1,5 +1,6 @@
-package com.jmb_bms_server.data
+package com.jmb_bms_server.data.team
 
+import com.jmb_bms_server.data.location.StorableLocation
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

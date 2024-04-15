@@ -1,7 +1,7 @@
-package com.jmb_bms_server.data
+package com.jmb_bms_server.data.team
 
-import com.jmb_bms_server.Location
 import com.jmb_bms_server.customSerializers.AtomicReferenceSerializer
+import com.jmb_bms_server.data.location.Location
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import org.bson.types.ObjectId
@@ -25,7 +25,7 @@ data class TeamEntry(
     var teamLead: AtomicReference<@Contextual ObjectId> = AtomicReference(ObjectId()),
 
     @Serializable(with = AtomicReferenceSerializer::class)
-    var teamEntry: AtomicReference<HashSet<@Contextual ObjectId>> = AtomicReference(HashSet())
+    var teamEntry: AtomicReference<HashSet<@Contextual ObjectId>> = AtomicReference(HashSet()),
 ){
 
     fun getStorableTeamEntry() = StorableTeamEntry(_id.get(),teamName.get(),teamIcon.get(),teamLocation.get()?.getStorableLocation(),teamLead.get(),teamEntry.get())

@@ -1,11 +1,10 @@
 package com.jmb_bms_server.terminal
 
-import com.jmb_bms_server.Location
+import com.jmb_bms_server.data.location.Location
 import com.jmb_bms_server.MessagesJsons.Messages
 import com.jmb_bms_server.TmpServerModel
-import com.jmb_bms_server.data.TeamEntry
-import com.jmb_bms_server.data.UserProfile
-import com.jmb_bms_server.data.UserSession
+import com.jmb_bms_server.data.team.TeamEntry
+import com.jmb_bms_server.utils.MissingParameter
 import com.mongodb.client.model.Filters
 import com.mongodb.client.model.Updates
 import io.ktor.server.netty.*
@@ -24,18 +23,18 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
-    fun createTeam(leadersName: String,parameters: Map<String, Any?>): Pair<Boolean, String>
+    fun createTeam(leadersName: String,parameters: Map<String, Any?>)
     {
-        val name = parameters["teamName"] as? String ?: return Pair(false,"Could not extract team name")
-        val icon = parameters["teamIcon"] as? String ?: return Pair(false,"Could not extract team icon")
-        val topTeamIdString = parameters["_id"] as? String ?: return Pair(false,"Could not extract teamId")
-        val topTeamId = model.teamsSet.find { it._id.get().toString() == topTeamIdString}?.teamName?.get() ?: return Pair(false,"Could not find top team")
+        val name = parameters["teamName"] as? String ?: throw MissingParameter("Could not extract team name")
+        val icon = parameters["teamIcon"] as? String ?: throw MissingParameter("Could not extract team icon")
+        val topTeamIdString = parameters["_id"] as? String ?: throw MissingParameter("Could not extract teamId")
+        val topTeamId = model.teamsSet.find { it._id.get().toString() == topTeamIdString}?.teamName?.get() ?: throw MissingParameter("Could not find top team")
 
-        val members = parameters["teamMembers"] as? MutableList<String> ?: return Pair(false,"Could not extract members")
+        val members = parameters["teamMembers"] as? MutableList<String> ?: throw  MissingParameter("Could not extract members")
         val m = members.map { e -> model.userSet.find { it._id.get().toString() == e }?.userName?.get() ?: "E"}.toMutableList()
 
         var list = listOf("",name,icon,leadersName)
-        if( !createTeam(list) ) return Pair(false,"Team name is already in use")
+        if( !createTeam(list) ) throw  MissingParameter("Team name is already in use")
 
         list = listOf("",topTeamId,name)
         addUsersOrTeamsToTeam(list,true)
@@ -44,7 +43,7 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         m.add(1,name)
 
         addUsersOrTeamsToTeam(m,true)
-        return Pair(true,"")
+
     }
 
     fun createTeam(params: List<String>?): Boolean
@@ -157,6 +156,11 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
                 sendJsonToAllUsers(Messages.updateTeam(teamEntry))
             }
             Location::lat.name -> {
+                if(value == "null")
+                {
+                    teamEntry.teamLocation.set(null)
+                    return true
+                }
                 if( teamEntry.teamLocation.get() == null) teamEntry.teamLocation.set(
                     Location(AtomicReference(value.toDouble()), AtomicReference(0.0))
                 )
@@ -168,6 +172,11 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
                 )
             }
             Location::long.name -> {
+                if(value == "null")
+                {
+                    teamEntry.teamLocation.set(null)
+                    return true
+                }
                 if(teamEntry.teamLocation.get() == null) teamEntry.teamLocation.set(
                     Location(AtomicReference(0.0),(AtomicReference(value.toDouble())))
                 )
@@ -189,6 +198,7 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
                 if( teamEntry.teamLead.get().toString() == newLeader._id.get().toString()) return true
 
                 teamEntry.teamLead.set(newLeader._id.get())
+                //TODO update team leader in database
 
                 if(newLeader.teamEntry.get().find { it == teamEntry._id.get() } == null)
                     model.addUserToTeam(newLeader,teamEntry)
@@ -205,12 +215,17 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
 
     fun updateLeader(teamName: String, userName: String)
     {
-        updateTeam(listOf("",teamName,TeamEntry::teamLead.name,userName))
+        updateTeam(listOf("",teamName, TeamEntry::teamLead.name,userName))
     }
 
     fun updateTeam(teamName: String, teamIcon: String, newTeamName: String)
     {
-        updateTeam(listOf("",teamName,TeamEntry::teamName.name,newTeamName,TeamEntry::teamIcon.name,teamIcon))
+        updateTeam(listOf("",teamName, TeamEntry::teamName.name,newTeamName, TeamEntry::teamIcon.name,teamIcon))
+    }
+
+    fun updateLocation(teamName: String,lat: String, long: String)
+    {
+        updateTeam(listOf("",teamName, Location::lat.name,lat, Location::long.name,long))
     }
 
     fun updateTeam(params: List<String>?)
@@ -353,9 +368,15 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
 
     fun teamLocSh(teamName: String, on: Boolean)
     {
+        val teamMates = model.userSet.filter { profile -> profile.teamEntry.get()?.find { it.toString() == teamName } != null }
+        val sessions = teamMates.map { profile ->
+            model.userSessionsSet.find { it.userId.get().toString() == profile._id.get().toString() }
+        }
+        println(sessions.isEmpty())
         runBlocking {
-            model.userSessionsSet.forEach {
-                it.session.get()?.send(Frame.Text(Messages.requestUserForStartOrStopOfLocShare(teamName,on)))
+            sessions.forEach {
+
+                it?.session?.get()?.send(Frame.Text(Messages.requestUserForStartOrStopOfLocShare(teamName,on)))
             }
         }
     }

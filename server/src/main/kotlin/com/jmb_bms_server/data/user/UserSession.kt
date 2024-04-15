@@ -1,4 +1,4 @@
-package com.jmb_bms_server.data
+package com.jmb_bms_server.data.user
 
 import io.ktor.websocket.*
 import org.bson.types.ObjectId

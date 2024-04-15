@@ -1,10 +1,10 @@
 package com.jmb_bms_server.terminal
 
-import com.jmb_bms_server.Location
+import com.jmb_bms_server.data.location.Location
 import com.jmb_bms_server.MessagesJsons.Messages
 import com.jmb_bms_server.TmpServerModel
-import com.jmb_bms_server.data.UserProfile
-import com.jmb_bms_server.data.UserSession
+import com.jmb_bms_server.data.user.UserProfile
+import com.jmb_bms_server.data.user.UserSession
 import com.mongodb.client.model.Filters
 import com.mongodb.client.model.Updates
 import io.ktor.server.netty.*
@@ -12,7 +12,6 @@ import io.ktor.websocket.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
-import org.bson.types.ObjectId
 import java.lang.NumberFormatException
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
@@ -58,7 +57,7 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
             return
         }
         printUser(profile,false)
-        val userSession = model.userSessionsSet.find { it.userId == profile._id }
+        val userSession = model.userSessionsSet.find { it.userId.get().toString() == profile._id.get().toString() }
         if(userSession == null)
         {
             println("No session entry for user ${params[1]}\n" +
@@ -70,7 +69,7 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
     fun printAllUserInfo(userProfile: UserProfile)
     {
         printUser(userProfile,false)
-        val userSession = model.userSessionsSet.find { it.userId.get() == userProfile._id.get() }
+        val userSession = model.userSessionsSet.find { it.userId.get().toString() == userProfile._id.get().toString() }
         if(userSession == null)
         {
             println("No session entry for user ${userProfile.userName}\n" +
@@ -125,6 +124,7 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
 
         runBlocking {
             model.userSessionsSet.forEach {
+                println(it)
                 it.session.get()?.send(Frame.Text(Messages.sendUserProfile(p)))
             }
         }
@@ -227,7 +227,7 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
         {
             val key = params[cnt]
             val value = params[cnt+1]
-            println("$key $value")
+           // println("$key $value")
             runBlocking {
                 editVal(key,value, profile)
             }
@@ -273,7 +273,7 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
 
         thread {
             runBlocking {
-                println(sessionEntry.session.get())
+               // println(sessionEntry.session.get())
                 sessionEntry.session.get()?.send(Frame.Text(Messages.bye("Admin kicked you")))
                 sessionEntry.session.get()?.close(CloseReason(CloseReason.Codes.NORMAL,"Admin kicked you"))
 
@@ -311,7 +311,7 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
             println("Iterations or period was not valid number")
             return
         }
-        println(iterations)
+       // println(iterations)
         thread {
             for(cnt in 0..iterations)
             {

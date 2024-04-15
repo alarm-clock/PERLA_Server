@@ -1,12 +1,14 @@
 package com.jmb_bms_server.MessagesJsons
 
-import com.jmb_bms_server.data.UserProfile
+import com.jmb_bms_server.data.user.UserProfile
 import com.jmb_bms_server.customSerializers.ObjectIdSerializer
-import com.jmb_bms_server.data.TeamEntry
+import com.jmb_bms_server.data.chat.StorableChat
+import com.jmb_bms_server.data.chat.StorableChatMessage
+import com.jmb_bms_server.data.point.PointEntry
+import com.jmb_bms_server.data.team.TeamEntry
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import kotlinx.serialization.json.*
 import kotlinx.serialization.modules.SerializersModule
 import org.bson.types.ObjectId
 
@@ -44,12 +46,15 @@ class Messages {
                 put(ID,0)
             }.toString()
         }
-        fun connectionSuccesFull(id: String): String
+        fun connectionSuccesFull(id: String, teamEntry: HashSet<ObjectId>): String
         {
-            return buildJsonObject {
-                put(OPCODE,1)
-                put(ID,id)
-            }.toString()
+            val message = SuccessfullConnecion(_id = id, teamEntry = teamEntry)
+            val json = Json{
+                serializersModule = SerializersModule {
+                    contextual(ObjectId::class,ObjectIdSerializer)
+                }
+            }
+            return json.encodeToString(message)
         }
         fun sendUserProfile(profile: UserProfile): String
         {
@@ -158,12 +163,12 @@ class Messages {
             }.toString()
         }
 
-        fun changingTeamLeader(teamEntry: TeamEntry,userProfile: UserProfile): String
+        fun changingTeamLeader(teamEntry: TeamEntry, userProfile: UserProfile): String
         {
             return buildJsonObject {
                 put(OPCODE,24)
                 put(TeamEntry::_id.name,teamEntry._id.get().toString())
-                put(UserProfile::_id.name,userProfile._id.get().toString())
+                put("userId",userProfile._id.get().toString())
             }.toString()
         }
 
@@ -193,5 +198,93 @@ class Messages {
                 if(teamEntry != null) put(TeamEntry::_id.name,teamEntry._id.get().toString())
             }.toString()
         }
+
+        fun pointCreationResult(success: Boolean, serverId: String? = null, reason: String? = null): String
+        {
+            return buildJsonObject {
+                put(OPCODE,41)
+                put("success",success)
+                put("serverId",serverId)
+                if(!success)
+                {
+                    put("reason",reason)
+                }
+            }.toString()
+        }
+
+        fun pointEntry(pointEntry: PointEntry): String
+        {
+            val message = PointEntryMessage(
+                serverId =   pointEntry._id.get().toString(),
+                name = pointEntry.name.get(),
+                description = pointEntry.description.get(),
+                ownerId = pointEntry.ownerId.get(),
+                files = pointEntry.files,
+                symbol = pointEntry.symbol.get(),
+                menuString = pointEntry.menusString.get(),
+                location = pointEntry.location.get().getStorableLocation(),
+                ownerName = pointEntry.ownerName.get()
+            )
+
+            return Json.encodeToString(message)
+        }
+
+        @OptIn(ExperimentalSerializationApi::class)
+        fun syncPointsMessage(list: List<String>): String
+        {
+            return buildJsonObject {
+                put(OPCODE,44)
+                putJsonArray("ids"){
+                    this.addAll(list)
+                }
+            }.toString()
+        }
+
+        fun pointDeltion(id: String): String
+        {
+            return buildJsonObject {
+                put(OPCODE,42)
+                put("serverId",id)
+            }.toString()
+        }
+
+        fun chatRoomCreation(storableChat: StorableChat): String
+        {
+            return Json.encodeToString(storableChat.getCreationMessage())
+        }
+
+        fun deleteChatRoom(id: String): String
+        {
+            return buildJsonObject {
+                put(OPCODE,61)
+                put("_id",id)
+            }.toString()
+        }
+
+        fun chatRoomMessage(storableChatMessage: StorableChatMessage): String
+        {
+            return Json.encodeToString(storableChatMessage.getChatMessage())
+        }
+
+        @OptIn(ExperimentalSerializationApi::class)
+        fun fetchedMessages(list: List<StorableChatMessage>): String
+        {
+            return buildJsonObject {
+                put(OPCODE,65)
+                putJsonArray("messages"){
+                    this.addAll(list.map { Json.encodeToString(it) })
+                }
+            }.toString()
+        }
+
+        fun failedToCreateChatRoom(name: String): String
+        {
+            return buildJsonObject {
+                put(OPCODE,66)
+                put("reason","This chat room name \"$name\" is already taken")
+            }.toString()
+        }
+
+        //TODO update user profile messages so that chat will be present and also update init message so that also chats in which is user will be sent
     }
 }

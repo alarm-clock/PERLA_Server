@@ -3,15 +3,22 @@ package com.jmb_bms_server
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.jmb_bms_server.MessagesJsons.Messages
-import com.jmb_bms_server.data.TeamEntry
-import com.jmb_bms_server.data.UserProfile
-import com.jmb_bms_server.data.UserSession
+import com.jmb_bms_server.data.location.Location
+import com.jmb_bms_server.data.team.TeamEntry
+import com.jmb_bms_server.data.user.UserProfile
+import com.jmb_bms_server.data.user.UserSession
 import com.jmb_bms_server.terminal.TerminalSh
+import com.jmb_bms_server.utils.GetJarPath
+import com.jmb_bms_server.utils.MissingParameter
+import com.jmb_bms_server.utils.Transaction
+import com.jmb_bms_server.utils.TransactionState
 import com.mongodb.client.model.Updates
 import io.ktor.websocket.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import org.bson.types.ObjectId
+import java.io.File
+import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
@@ -72,7 +79,6 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
                 serverModel.userSessionsSet.forEach { otherClient ->
                     if(otherClient.userId.get() != userProfile._id.get())
                     {
-                        println(userProfile.location.get())
                         otherClient.session.get()?.send(Frame.Text(Messages.sendLocationUpdate(userProfile)))
                     }
                 }
@@ -100,6 +106,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         connectionState = ConnectionState.NOT_CONNECTED
         sentBye = true
         handleDiscRelay()
+        serverModel.tmpTransactionFiles.find { it.owner == userProfile._id.get().toString() }?.failTransactionNoWait()
     }
 
     private fun getTeamByIdAndCheckLead(teamId: String): TeamEntry?
@@ -160,10 +167,12 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
                     session.send(Frame.Text(Messages.respErr21("User is not team leader of provided team")))
                     return@runBlocking
                 }
-                val res = terminalSh.teamCommandsHandler.createTeam(userProfile.userName.get(),params)
-                if( !res.first )
+                try {
+                    terminalSh.teamCommandsHandler.createTeam(userProfile.userName.get(),params)
+                }
+                catch (e: MissingParameter)
                 {
-                    session.send(Frame.Text(Messages.respErr21(res.second)))
+                    session.send(Frame.Text(Messages.respErr21(e.message!!)))
                 }
             }
         }
@@ -226,6 +235,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             val newName = params["newName"] as? String ?: return@threadRun
             val newIcon = params["newIcon"] as? String ?: return@threadRun
 
+            println(newIcon)
             val team = getTeamByIdAndCheckLead(teamId) ?: return@threadRun
 
             terminalSh.teamCommandsHandler.updateTeam(team.teamName.get(),newIcon,newName)
@@ -236,11 +246,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
     {
         threadRun {
             val teamId = getTeamId(params) ?: return@threadRun
-            val teamName = getTeamByIdAndCheckLead(teamId)?.teamName?.get() ?: return@threadRun
+            getTeamByIdAndCheckLead(teamId) ?: return@threadRun
 
             val on = params["on"] as? Boolean ?: return@threadRun
 
-            terminalSh.teamCommandsHandler.teamLocSh(teamName,on)
+            terminalSh.teamCommandsHandler.teamLocSh(teamId,on)
         }
     }
 
@@ -265,10 +275,212 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
     private fun handleTeamLocUpdate(params: Map<String, Any?>,wholeMessage: String)
     {
         //TODO add location storing for team and indication that it is working
+        val id = params["_id"] as? String ?: return
+        val lat = params["lat"]  as? Double
+        val long = params["long"] as? Double
+
+        val name = getTeamByIdAndCheckLead(id)?.teamName?.get() ?: return
+        terminalSh.teamCommandsHandler.updateLocation(name,lat.toString(),long.toString())
+
         threadRun {
             serverModel.userSessionsSet.forEach {
                 it.session.get()?.send(Frame.Text(wholeMessage))
             }
+        }
+    }
+
+    private fun failTransaction(id: String?)
+    {
+        val transaction = serverModel.tmpTransactionFiles.find { it.id == id } ?: return
+        transaction.failTransactionNoWait()
+    }
+
+    private fun handlePointCreation(params: Map<String, Any?>)
+    {
+        threadRun {
+            val localId = params["serverId"] as? String ?: throw MissingParameter("NoId")
+            println(localId)
+            try {
+
+                val transaction = serverModel.tmpTransactionFiles.find { it.id == localId }
+                println("Transaction state: ${transaction?.transactionState}\n" +
+                        "   id: ${transaction?.id}\n" +
+                        "   files:")
+                transaction?.files?.forEach {
+                    println(it)
+                }
+                if( transaction != null && transaction.transactionState.get() != TransactionState.IN_PROGRESS)
+                {
+                    failTransaction(localId)
+                    session.send(Frame.Text(Messages.pointCreationResult(false, reason = "WrongState")))
+                    return@threadRun
+                }
+                val existingPoint = serverModel.pointSet.find { it._id.get().toString() == localId }
+
+                var id: String?
+
+                if(existingPoint == null)
+                {
+                    id = terminalSh.pointCommandsHandler.addPoint(params,userProfile._id.get().toString(),userProfile.userName.get())
+                    if(id == null)
+                    {
+                        failTransaction(localId)
+                        session.send(Frame.Text(Messages.pointCreationResult(false, reason = "Missing files")))
+                        return@threadRun
+                    }
+                    println("Point was created")
+                } else
+                {
+                    id = existingPoint._id.get().toString()
+                    val opRes = terminalSh.pointCommandsHandler.updatePoint(params,userProfile._id.get().toString())
+
+                    if(!opRes)
+                    {
+                        failTransaction(localId)
+                        session.send(Frame.Text(Messages.pointCreationResult(false, reason = "Missing files")))
+                        return@threadRun
+                    }
+                    println("Point was updated")
+                }
+
+                session.send(Frame.Text(Messages.pointCreationResult(true,id)))
+                val entry = serverModel.pointSet.find { it._id.get().toString() == id }
+
+                println(entry?.files)
+
+                serverModel.userSessionsSet.forEach {
+
+                    if(it.userId.get().toString() != userProfile._id.get().toString())
+                        it.session.get()?.send(Frame.Text(Messages.pointEntry(entry!!)))
+                }
+
+                serverModel.tmpTransactionFiles.find { it.id == localId }?.finishTransaction() ?: return@threadRun
+
+            }catch (e: MissingParameter)
+            {
+                failTransaction(localId)
+                session.send(Frame.Text(Messages.pointCreationResult(false,localId, reason = e.message)))
+                return@threadRun
+            } catch (e: Exception)
+            {
+                e.printStackTrace()
+                failTransaction(localId)
+                session.send(Frame.Text(Messages.pointCreationResult(false,localId ,reason = e.message)))
+                return@threadRun
+            }
+        }
+    }
+    private fun handlePointDeletion(params: Map<String, Any?>)
+    {
+        threadRun {
+            try {
+                terminalSh.pointCommandsHandler.deletePoint(params, userProfile._id.get().toString())
+            } catch (e: MissingParameter) {
+              //  session.send(Frame.Text(Messages.pointCreationResult(false, reason = e.message)))
+                e.printStackTrace()
+                return@threadRun
+            }
+        }
+    }
+
+    private fun handlePointUpdate(params: Map<String, Any?>)
+    {
+        threadRun {
+            try {
+                terminalSh.pointCommandsHandler.updatePoint(params,userProfile._id.get().toString())
+            } catch (_:MissingParameter)
+            {
+                return@threadRun
+            }
+        }
+    }
+
+    private fun handleSyncRequest(params: Map<String, Any?>)
+    {
+        threadRun {
+            val owner = userProfile._id.get().toString()
+
+            terminalSh.pointCommandsHandler.syncWithClient(params,owner)
+
+            val otherUsersPoints = serverModel.pointSet.filter { it.ownerId.get().toString() != owner }
+            if(otherUsersPoints.isNotEmpty()) session.send(Frame.Text(Messages.syncPointsMessage(otherUsersPoints.map { it._id.get().toString() })))
+            otherUsersPoints.forEach {
+                session.send(Frame.Text(Messages.pointEntry(it)))
+            }
+        }
+    }
+
+    private fun handleFailedTransactionAcknowledgement(params: Map<String, Any?>)
+    {
+        val transactionId = params["transactionId"] as? String ?: return
+        serverModel.tmpTransactionFiles.find { it.id == transactionId }?.failTransaction()
+    }
+
+    private fun handleChatRoomCreation(params: Map<String, Any?>)
+    {
+        threadRun {
+           val res = terminalSh.chatCommandsHandler.createChatRoom(params, userProfile._id.get().toString())
+
+            if(!res)
+            {
+                session.send(Frame.Text(Messages.failedToCreateChatRoom(params["name"] as? String ?: "")))
+            }
+        }
+    }
+
+    private fun handleChatRoomDeletion(params: Map<String, Any?>)
+    {
+        threadRun {
+            terminalSh.chatCommandsHandler.deleteChatRoom(params,userProfile._id.get().toString())
+        }
+    }
+
+    private fun handleManageChatRoomUsers(params: Map<String, Any?>)
+    {
+        threadRun {
+            terminalSh.chatCommandsHandler.manageChatUsers(params,userProfile._id.get().toString())
+        }
+    }
+
+    private fun handleChatRoomOwnerChange(params: Map<String, Any?>)
+    {
+        threadRun {
+            terminalSh.chatCommandsHandler.changeChatOwner(params,userProfile._id.get().toString())
+        }
+    }
+
+    private fun handleSentMessage(params: Map<String, Any?>)
+    {
+        threadRun {
+            val transactionId = params["transactionId"] as? String
+
+            val transaction = serverModel.tmpTransactionFiles.find { it.id == transactionId }
+
+            if(transaction != null && transaction.transactionState.get() != TransactionState.IN_PROGRESS)
+            {
+                transaction.failTransaction()
+                //TODO send fail to user
+                return@threadRun
+            }
+
+            val res = terminalSh.chatCommandsHandler.sendMessage(params,userProfile._id.get().toString(),userProfile.userName.get(),userProfile.symbolCode.get())
+
+            if(!res)
+            {
+                transaction?.failTransaction()
+                //TODO send fail to user
+
+            } else
+            {
+                transaction?.finishTransaction()
+            }
+        }
+    }
+
+    private fun handleFetchMessages(params: Map<String, Any?>)
+    {
+        threadRun {
+            terminalSh.chatCommandsHandler.fetchMessages(params, userProfile._id.get().toString())
         }
     }
 
@@ -288,7 +500,22 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             25.0 -> handleTeamUpdate(params)
             26.0 -> handleAllTurnOnLocReq(params)
             27.0 -> handleMemberLocationSharingReq(params)
-            29.0 -> handleTeamLocUpdate(params,frame.toString())
+            29.0 -> handleTeamLocUpdate(params,frame.readText())
+
+            40.0 -> handlePointCreation(params)
+            42.0 -> handlePointDeletion(params)
+            43.0 -> handlePointUpdate(params)
+            44.0 -> handleSyncRequest(params)
+
+            49.0 -> handleFailedTransactionAcknowledgement(params)
+            50.0 -> {}
+
+            60.0 -> handleChatRoomCreation(params)
+            61.0 -> handleChatRoomDeletion(params)
+            62.0 -> handleManageChatRoomUsers(params)
+            63.0 -> handleChatRoomOwnerChange(params)
+            64.0 -> handleSentMessage(params)
+            65.0 -> handleFetchMessages(params)
         }
     }
 
@@ -300,6 +527,8 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             userProfile.location.set( null )
             connectionState = ConnectionState.NOT_CONNECTED
             handleDiscRelay()
+
+            serverModel.tmpTransactionFiles.find { it.owner == userProfile._id.get().toString() }?.failTransaction()
         }
         userProfile.connected.set(false)
         println("${userProfile._id.get()} Close reason: ${frame.readReason()?.message}\nCode: ${frame.readReason()?.code}")
@@ -366,7 +595,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         userSession = storedSession
         userProfile = profile
         connectionState = ConnectionState.CONNECTED
-        session.send(Frame.Text(Messages.connectionSuccesFull(userProfile._id.toString())))
+        session.send(Frame.Text(Messages.connectionSuccesFull(userProfile._id.toString(),userProfile.teamEntry.get())))
         return true
     }
 
@@ -401,7 +630,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         println("Checking by id")
         userSession = storedSession
         userProfile = profile
-        session.send(Frame.Text(Messages.connectionSuccesFull(profile._id.toString())))
+        session.send(Frame.Text(Messages.connectionSuccesFull(profile._id.toString(),userProfile.teamEntry.get())))
         connectionState = ConnectionState.CONNECTED
         return true
     }
@@ -476,6 +705,13 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         serverModel.teamsSet.forEach {
             session.send(Frame.Text(Messages.teamProfile(it)))
         }
+
+        serverModel.chatDb.getAllChats()?.forEach {
+            if(it.members.find { id -> id == userProfile._id.get().toString() } != null)
+            {
+                session.send(Frame.Text(Messages.chatRoomCreation(it)))
+            }
+        }
     }
     private suspend fun notifyOtherUsers()
     {
@@ -506,13 +742,16 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             println("Got from session.incoming")
             userSession.session.set(null)
             userProfile.connected.set(false)
+            serverModel.tmpTransactionFiles.find { it.owner == userProfile._id.get().toString() }?.failTransaction()
             if(!userInitiatedClose)
             {
                 handleDiscRelay()
             }
         } catch (e: Exception)
         {
-            println("Error: " + e.message + "\n" + e.cause?.message)
+            println("[${LocalDateTime.now()}]  Error: " + e.message + "\n" + e.cause?.message + "\n")
+            e.printStackTrace()
+
             if(session.isActive)
             {
                 try {
@@ -525,6 +764,8 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             }
             userSession.session.set(null)
             userProfile.connected.set(false)
+
+            serverModel.tmpTransactionFiles.find { it.owner == userProfile._id.get().toString() }?.failTransaction()
         }
     }
 }

@@ -4,19 +4,13 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.jmb_bms_server.*
 import com.jmb_bms_server.MessagesJsons.Messages
-import com.jmb_bms_server.data.UserProfile
-import com.jmb_bms_server.data.UserSession
-import com.mongodb.client.model.Filters
-import com.mongodb.client.model.Updates
+import com.jmb_bms_server.utils.Configuration
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
-import kotlinx.serialization.json.Json
-import java.lang.NumberFormatException
-import java.util.concurrent.atomic.AtomicReference
-import kotlin.random.Random
 import kotlin.concurrent.thread
+import kotlin.system.exitProcess
 
 class TerminalSh(private val model: TmpServerModel, ) {
 
@@ -27,6 +21,8 @@ class TerminalSh(private val model: TmpServerModel, ) {
     private fun getParameters(line: String): List<String> = line.split(Regex(" +"))
 
     lateinit var teamCommandsHandler : TeamCommandsHandler
+    lateinit var pointCommandsHandler: PointCommandsHandler
+    lateinit var chatCommandsHandler: ChatCommandsHandler
 
     private lateinit var userCommandsHandler : UserCommandsHandler
 
@@ -39,6 +35,8 @@ class TerminalSh(private val model: TmpServerModel, ) {
         this.server = server
         teamCommandsHandler = TeamCommandsHandler(model, server)
         userCommandsHandler = UserCommandsHandler(model, server)
+        pointCommandsHandler = PointCommandsHandler(model)
+        chatCommandsHandler = ChatCommandsHandler(model)
     }
 
 
@@ -103,38 +101,26 @@ class TerminalSh(private val model: TmpServerModel, ) {
     }
 
     private fun c(params: List<String>?){
-
-        val a = listOf(listOf("","pepe","PICA"),listOf("","vojto","JEBAL"),listOf("","Mojmoir","NEMAL"),listOf("","dezo","JEZO"),listOf("","pipik","JEBAL"))
-
-        a.forEach {
-            userCommandsHandler.createUser(it)
+        runBlocking {
         }
-
-        val memberIDs = mutableListOf<String>()
-
-        a.forEach { list ->
-            memberIDs.add(model.userSet.find { it.userName.get() == list[1] }?._id?.get().toString())
+    }
+    fun generateUsers()
+    {
+        for(i in 1..150)
+        {
+            userCommandsHandler.createUser(listOf("",i.toString(),"SFGPUC---------"))
         }
-
-        teamCommandsHandler.createTeam(listOf("","A","def","pepe"))
-
-        val map = mutableMapOf<String, Any?>()
-        arrayOf(
-            Pair("teamName","Jeblinky"),
-            Pair("teamIcon","def"),
-            Pair("topTeamId",model.teamsSet.find { it.teamName.get() == "A" }?._id?.get().toString())
-        ).forEach {
-            map[it.first] = it.second
+    }
+    fun allConnected()
+    {
+        model.userSet.forEach {
+            it.connected.set(true)
         }
-
-        map["teamMembers"] = memberIDs
-
-        println(map["teamName"].toString() + " " + map["teamIcon"].toString() + " " + map["teamMembers"] )
-
-        teamCommandsHandler.createTeam("pepe",map)
-
-        teamCommandsHandler.printAllTeams()
-        userCommandsHandler.printAllUsers()
+    }
+    fun unConnectDelta()
+    {
+        model.userSet.find { it.userName.get() == "Delta" }?.connected?.set(false)
+        model.userSet.find { it.userName.get() == "Jozef" }?.connected?.set(false)
     }
 
     private fun debug(params: List<String>?)
@@ -174,6 +160,19 @@ class TerminalSh(private val model: TmpServerModel, ) {
                 "removeUsersFromTeam" -> teamCommandsHandler.addUsersOrTeamsToTeam(parseParams(line,3){ expected, real -> real < expected },false)
                 "printAllTeams" -> teamCommandsHandler.printAllTeams()
                 "printTeam" -> teamCommandsHandler.printTeam(parseParams(line,2){expected, real -> expected != real })
+                "printAllPoints" -> pointCommandsHandler.printAllPoints()
+                "printPoint" -> pointCommandsHandler.printPoint(parseParams(line,2){expected, real -> expected != real }?.get(1) ?: "")
+                "deletePoint" -> {
+                    runBlocking {
+                        pointCommandsHandler.deletePoint(parseParams(line,2){expected, real -> expected != real }?.get(1) ?: "","admin")
+                    }
+                }
+                "updatePoint" -> pointCommandsHandler.updatePoint(parseParams(line,2){expected, real -> real < expected })
+                "createChat" -> chatCommandsHandler.createChatRoom(parseParams(line,3){expected, real -> real < expected  })
+                "deleteChat" -> chatCommandsHandler.deleteChatRoom(parseParams(line,2){expected, real -> expected != real})
+                "manageMembers" -> chatCommandsHandler.manageChatUsers(parseParams(line,4){expected, real -> real < expected })
+                "sendMessage" -> chatCommandsHandler.sendMessage(parseParams(line,3){expected, real -> real < expected })
+
                 else -> println("Unknown command... Enter help to list available commands")
             }
         } else
@@ -192,13 +191,24 @@ class TerminalSh(private val model: TmpServerModel, ) {
                 "simTurnOffLocSh" -> userCommandsHandler.simTurnOffLocSh(parseParams(line, 2) { expected, real -> real != expected })
                 "simMoveRandom" -> userCommandsHandler.simMoveRandom(parseParams(line, 4) { expected, real -> real != expected })
                 "c" -> c(parseParams(line, 0) { expected, real -> true })
-                "createTeam" -> teamCommandsHandler.createTeam(parseParams(line,0){_ ,real -> real != 5 && real != 3 })
+                "createTeam" -> teamCommandsHandler.createTeam(parseParams(line,0){_ ,real -> real != 6 && real != 4 })
                 "deleteTeam" -> teamCommandsHandler.deleteTeam(parseParams(line,2){ expected, real -> real != expected })
                 "updateTeam" -> teamCommandsHandler.updateTeam(parseParams(line,3){ expected ,real -> real < expected})
                 "addUsersToTeam" -> teamCommandsHandler.addUsersOrTeamsToTeam(parseParams(line,3){ expected, real -> real < expected }, true)
                 "removeUsersFromTeam" -> teamCommandsHandler.addUsersOrTeamsToTeam(parseParams(line,3){ expected, real -> real < expected },false)
                 "printAllTeams" -> teamCommandsHandler.printAllTeams()
                 "printTeam" -> teamCommandsHandler.printTeam(parseParams(line,2){expected, real -> expected != real })
+                "printAllPoints" -> pointCommandsHandler.printAllPoints()
+                "printPoint" -> pointCommandsHandler.printPoint(parseParams(line,2){expected, real -> expected != real }?.get(1) ?: "")
+                "deletePoint" -> {
+                    runBlocking {
+                        pointCommandsHandler.deletePoint(parseParams(line,2){expected, real -> expected != real }?.get(1) ?: "","admin")
+                    }
+                }
+                "updatePoint" -> pointCommandsHandler.updatePoint(parseParams(line,2){expected, real -> real < expected })
+                "a" -> allConnected()
+                "d" -> unConnectDelta()
+                "g" -> generateUsers()
                 else -> println("Unknown command... Enter help to list available commands")
             }
         }
@@ -225,7 +235,7 @@ class TerminalSh(private val model: TmpServerModel, ) {
     {
         var res: NettyApplicationEngine
 
-        res = embeddedServer(Netty, port = 8080, host = "192.168.10.142"){
+        res = embeddedServer(Netty, port = Configuration.port, host = "0.0.0.0"){
             module(model,this@TerminalSh)
         }.start(wait = false)
 

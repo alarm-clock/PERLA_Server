@@ -1,19 +1,22 @@
 package com.jmb_bms_server
 
 
-import com.jmb_bms_server.data.StorableTeamEntry
-import com.jmb_bms_server.data.StorableUserProfile
+import com.jmb_bms_server.data.counter.Counters
+import com.jmb_bms_server.data.point.StorablePointEntry
+import com.jmb_bms_server.data.team.StorableTeamEntry
+import com.jmb_bms_server.data.user.StorableUserProfile
 import com.jmb_bms_server.terminal.TerminalSh
+import com.jmb_bms_server.utils.*
 import io.ktor.server.application.*
-import io.ktor.server.engine.*
-import io.ktor.server.netty.*
 import io.ktor.server.routing.*
+import io.ktor.server.sessions.*
 import io.ktor.server.websocket.*
 import kotlinx.coroutines.*
+import java.io.File
+import java.io.FileReader
 import java.time.Duration
 import java.util.concurrent.Executors
 import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.thread
 
 val lock = ReentrantLock()
 var appRun: Boolean = true
@@ -54,10 +57,39 @@ fun initalDialog(): InitDialogReturn
     }
 }
 
+fun readConfiguration(): Map<String, String>?
+{
+    try {
+        val conf = mutableMapOf<String, String>()
+
+        val file = File("${GetJarPath.currentWorkingDirectory}/config/conf.txt")
+
+        FileReader(file).forEachLine {
+            val trimmedLine = it.trim()
+            if(trimmedLine.isNotEmpty() && trimmedLine[0] != '!' && trimmedLine.isNotBlank())
+            {
+                val pair = trimmedLine.split(":", limit = 2)
+                conf[pair[0].trim()] = pair[1].trim()
+            }
+        }
+
+        Configuration.port = conf["port"]!!.toInt()
+        Configuration.mongo = conf["mongo"]!!
+
+        return conf
+    } catch (e:Exception){
+        e.printStackTrace()
+        println("Unable to read conf.txt. Stopping server...")
+        return null
+    }
+
+}
 
 
 //@OptIn(DelicateCoroutinesApi::class)
 fun main() {
+
+    readConfiguration() ?: return
 
     val input = initalDialog()
 
@@ -67,13 +99,17 @@ fun main() {
         return
     }
 
+    DBConnection.setMongoString()
+
     val dbClient = DBConnection.getMongoClient()
     val database = DBConnection.getUserDatabase(dbClient)
 
     val profileCollection = database.getCollection<StorableUserProfile>("usersTable")
     val teamsCollection = database.getCollection<StorableTeamEntry>("teamTable")
+    val pointCollection = database.getCollection<StorablePointEntry>("pointTable")
+    Counters.setCountersCollection(database)
 
-    val model = TmpServerModel(profileCollection,teamsCollection,input.restore)
+    val model = TmpServerModel(profileCollection,teamsCollection,pointCollection,database,input.restore)
 
     val terminalSh = TerminalSh(model)
     terminalSh.startApplication()
@@ -91,9 +127,20 @@ fun Application.module(model: TmpServerModel, terminalSh: TerminalSh) {
         pingPeriod = Duration.ofSeconds(15)
         timeout = Duration.ofSeconds(15)
     }
+    install(Sessions)
+    {
+        header<MySession>("SESSION")
+    }
+
     routing {
         webSocket("/connect") {
             UserConnectionHandler(this,model,terminalSh).handleConnection()
+        }
+        post("/upload"){
+            uploadFile(this,model)
+        }
+        get("download/{fileName}"){
+            downloadFile(this,model)
         }
     }
 }

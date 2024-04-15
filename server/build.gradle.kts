@@ -32,6 +32,7 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json-jvm")
     implementation("io.ktor:ktor-server-websockets-jvm")
     implementation("io.ktor:ktor-server-netty-jvm")
+    implementation("io.ktor:ktor-network-tls-certificates:2.3.8")
     implementation("ch.qos.logback:logback-classic:$logback_version")
     implementation ("com.google.code.gson:gson:2.10")
     implementation("org.mongodb:mongodb-driver-kotlin-coroutine:4.11.0")

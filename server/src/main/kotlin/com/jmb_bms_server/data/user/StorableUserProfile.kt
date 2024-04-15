@@ -1,5 +1,6 @@
-package com.jmb_bms_server.data
+package com.jmb_bms_server.data.user
 
+import com.jmb_bms_server.data.location.StorableLocation
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -12,5 +13,5 @@ data class StorableUserProfile(@SerialName("_id") @Contextual @BsonId var _id: O
                                var symbolCode: String,
                                var location: StorableLocation?,
                                var connected: Boolean,
-                               var teamEntry: HashSet<@Contextual ObjectId>
+                               var teamEntry: HashSet<@Contextual ObjectId>,
 )
