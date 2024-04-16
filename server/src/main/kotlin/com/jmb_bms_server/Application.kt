@@ -7,6 +7,7 @@ import com.jmb_bms_server.data.team.StorableTeamEntry
 import com.jmb_bms_server.data.user.StorableUserProfile
 import com.jmb_bms_server.terminal.TerminalSh
 import com.jmb_bms_server.utils.*
+import io.ktor.network.tls.certificates.*
 import io.ktor.server.application.*
 import io.ktor.server.routing.*
 import io.ktor.server.sessions.*
@@ -85,6 +86,8 @@ fun readConfiguration(): Map<String, String>?
 
 }
 
+private var model: TmpServerModel? = null
+private var terminalSh: TerminalSh? = null
 
 //@OptIn(DelicateCoroutinesApi::class)
 fun main() {
@@ -109,18 +112,27 @@ fun main() {
     val pointCollection = database.getCollection<StorablePointEntry>("pointTable")
     Counters.setCountersCollection(database)
 
-    val model = TmpServerModel(profileCollection,teamsCollection,pointCollection,database,input.restore)
+    model = TmpServerModel(profileCollection,teamsCollection,pointCollection,database,input.restore)
 
-    val terminalSh = TerminalSh(model)
-    terminalSh.startApplication()
+    generateCertificate()
+
+    terminalSh = TerminalSh(model!!)
+
+    terminalSh!!.startApplication()
 
 }
 
-fun Application.module(model: TmpServerModel, terminalSh: TerminalSh) {
+fun Application.module() {
     //configureSecurity()
     //configureSerialization()
     //configureSockets()
     //configureRouting()
+
+
+
+    println(environment.config.port)
+    println(environment.config.host)
+    println(environment.config.toMap().toString())
 
     install(WebSockets)
     {
@@ -134,13 +146,13 @@ fun Application.module(model: TmpServerModel, terminalSh: TerminalSh) {
 
     routing {
         webSocket("/connect") {
-            UserConnectionHandler(this,model,terminalSh).handleConnection()
+            UserConnectionHandler(this,model!!,terminalSh!!).handleConnection()
         }
         post("/upload"){
-            uploadFile(this,model)
+            uploadFile(this,model!!)
         }
         get("download/{fileName}"){
-            downloadFile(this,model)
+            downloadFile(this,model!!)
         }
     }
 }

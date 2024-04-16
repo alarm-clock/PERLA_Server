@@ -5,10 +5,14 @@ import com.google.gson.reflect.TypeToken
 import com.jmb_bms_server.*
 import com.jmb_bms_server.MessagesJsons.Messages
 import com.jmb_bms_server.utils.Configuration
+import com.jmb_bms_server.utils.GetJarPath
+import com.typesafe.config.ConfigFactory
+import io.ktor.server.config.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
+import java.io.File
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -235,11 +239,11 @@ class TerminalSh(private val model: TmpServerModel, ) {
     {
         var res: NettyApplicationEngine
 
-        res = embeddedServer(Netty, port = Configuration.port, host = "0.0.0.0"){
-            module(model,this@TerminalSh)
-        }.start(wait = false)
+        res = embeddedServer(Netty, commandLineEnvironment(
+            arrayOf("-config=${GetJarPath.currentWorkingDirectory}/config/application.conf")
+        )).start(false)
 
-        thread {   //GlobalScope.launch {
+        thread {
             this.init(res)
             this.run()
         }
