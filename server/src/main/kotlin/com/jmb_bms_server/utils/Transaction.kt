@@ -28,7 +28,7 @@ class Transaction(
     {
         timeout?.cancel()
         timeout = CoroutineScope(Dispatchers.IO).launch {
-            delay(600000)  // 10 minutes
+            delay(1200000)  // 10 minutes
             files.forEach{
                 File("${GetJarPath.currentWorkingDirectory}/files/$it").delete()
             }
@@ -46,6 +46,7 @@ class Transaction(
 
     fun failTransaction()
     {
+
         files.forEach{
             File("${GetJarPath.currentWorkingDirectory}/files/$it").delete()
         }

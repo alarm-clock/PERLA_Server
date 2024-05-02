@@ -1,5 +1,0 @@
-!configuration file for server!
-!lines starting with ! will not be parsed!
-
-port: 8080
-mongo: myAdmin:admin69@localhost:27017

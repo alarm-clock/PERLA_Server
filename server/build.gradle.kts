@@ -22,6 +22,14 @@ repositories {
     mavenCentral()
 }
 
+tasks.withType<Jar>{
+    manifest{
+        attributes["Main-class"] = "com.jmb_bms_server.ApplicationKt"
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from({ configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) }})
+}
+
 dependencies {
     implementation("io.ktor:ktor-server-core-jvm")
     implementation("io.ktor:ktor-server-auth-jvm")

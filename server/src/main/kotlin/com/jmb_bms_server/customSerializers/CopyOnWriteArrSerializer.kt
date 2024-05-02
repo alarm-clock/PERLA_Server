@@ -15,18 +15,9 @@ class CopyOnWriteArrSerializer<T>(private val valueSerializer: KSerializer<List<
 {
 
     override val descriptor = valueSerializer.descriptor
-
-   // @OptIn(ExperimentalSerializationApi::class)
     override fun serialize(encoder: Encoder, value: CopyOnWriteArrayList<T>) {
 
         valueSerializer.serialize(encoder,value.toList())
-        /*
-        val jsonEncoder = encoder as? JsonEncoder ?: throw IllegalArgumentException("Can't serialize")
-
-        val jsonArr = kotlinx.serialization.json.JsonArray(value.map { JsonPrimitive(it) })
-        jsonEncoder.encodeJsonElement(jsonArr)
-
-         */
     }
 
     override fun deserialize(decoder: Decoder): CopyOnWriteArrayList<T> {

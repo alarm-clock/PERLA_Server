@@ -4,6 +4,7 @@ import com.jmb_bms_server.MessagesJsons.Messages
 import com.jmb_bms_server.TmpServerModel
 import com.jmb_bms_server.data.point.PointEntry
 import com.jmb_bms_server.utils.GetJarPath
+import com.jmb_bms_server.utils.Logger
 import com.jmb_bms_server.utils.MissingParameter
 import com.jmb_bms_server.utils.checkIfAllFilesAreUploaded
 import com.mongodb.client.model.Updates
@@ -54,6 +55,7 @@ class PointCommandsHandler(private val model: TmpServerModel) {
         {
             oldFiles.forEach {
                 File("${GetJarPath.currentWorkingDirectory}/files/$it").delete()
+                Logger.log("Deleting file on point update: ${GetJarPath.currentWorkingDirectory}/files/$it","none")
             }
             return
         }
@@ -61,6 +63,7 @@ class PointCommandsHandler(private val model: TmpServerModel) {
         val filesForDelete = oldFiles.filterNot { it in newFiles }
         filesForDelete.forEach {
             File("${GetJarPath.currentWorkingDirectory}/files/$it").delete()
+            Logger.log("Deleting file on point update: ${GetJarPath.currentWorkingDirectory}/files/$it","none")
         }
     }
 
@@ -81,6 +84,14 @@ class PointCommandsHandler(private val model: TmpServerModel) {
         val owner = params["owner"] as? String
         val lat = params["lat"] as? Double
         val long = params["long"]  as? Double
+
+        Logger.log("Adding point:" +
+                "   id: ${id}\n" +
+                "   name: ${name}\n" +
+                "   description: ${descr}\n" +
+                "   symbol: ${symbol}\n" +
+                "   ownerId: ${owner}\n" +
+                "   attached files:\nlocation: $lat - $long",ownerName)
 
 
         return addPoint(
@@ -104,7 +115,7 @@ class PointCommandsHandler(private val model: TmpServerModel) {
     {
         if( !checkIfAllFilesAreUploaded(newPointEntry.files) )
         {
-            println("Not all files where uploaded")
+            Logger.log("Not all files where uploaded for point ${newPointEntry._id.get()}",newPointEntry.ownerName.get())
             return null
         }
 
@@ -164,6 +175,14 @@ class PointCommandsHandler(private val model: TmpServerModel) {
             locBson = Updates.set(PointEntry::location.name,entry.location.get().getStorableLocation())
         }
 
+        Logger.log("Updating point ${entry._id.get()}:" +
+                "   id: ${id}\n" +
+                "   name: ${name}\n" +
+                "   description: ${descr}\n" +
+                "   symbol: ${symbol}\n" +
+                "   ownerId: ${owner}\n" +
+                "   attached files:\nlocation: $lat - $long",userId)
+
 
         val updates = Updates.combine(
             name?.let {
@@ -184,7 +203,7 @@ class PointCommandsHandler(private val model: TmpServerModel) {
                             },
             (files?.let {
                 val mappedIt = it.map { name -> "$userId-$name" }
-                println(mappedIt)
+               // println(mappedIt)
                 if( !checkIfAllFilesAreUploaded(mappedIt) ) return false
                 deleteFilesOnUpdate(entry.files,mappedIt)
                 entry.files.clear()
@@ -211,6 +230,7 @@ class PointCommandsHandler(private val model: TmpServerModel) {
     suspend fun deletePoint(params: Map<String, Any?>, userId: String): Boolean
     {
         val id = params["serverId"] as? String ?: throw MissingParameter("NoId")
+        Logger.log("deleting point $id",userId)
         return deletePoint(id,userId)
     }
 

@@ -17,8 +17,8 @@ suspend fun validateRequest(server: PipelineContext<Unit, ApplicationCall>, mode
 
     if(id == null)
     {
-        println("Someone tried to upload/download file without identification\n " +
-                "ip: ${server.call.request.local.remoteHost}")
+        Logger.log("Someone tried to upload/download file without identification\n " +
+                "ip: ${server.call.request.local.remoteHost}","unknown")
         server.call.respond(HttpStatusCode.Forbidden, "Unidentified")
         return null
     }
@@ -27,20 +27,20 @@ suspend fun validateRequest(server: PipelineContext<Unit, ApplicationCall>, mode
     {
         0 -> return id
         1 -> {
-            println("Identified user doesn't exists\n " +
-                    "ip: ${server.call.request.local.remoteHost}")
+            Logger.log("Identified user doesn't exists\n " +
+                    "ip: ${server.call.request.local.remoteHost}","Unidentified")
             server.call.respond(HttpStatusCode.Forbidden, "NoUser")
             return null
         }
         2 -> {
-            println("Identified user doesn't have active connection\n " +
-                    "ip: ${server.call.request.local.remoteHost}")
+            Logger.log("Identified user doesn't have active connection\n " +
+                    "ip: ${server.call.request.local.remoteHost}","$id")
             server.call.respond(HttpStatusCode.Forbidden, "NotConnected")
             return null
         }
         else ->
         {
-            println("Internal error while validating user")
+            Logger.log("Internal error while validating user, line 43","Unknown")
             server.call.respond(HttpStatusCode.InternalServerError)
             return null
         }
@@ -74,6 +74,7 @@ fun failTransaction(transactionId: String?, model: TmpServerModel)
 {
     transactionId ?: return
     val transaction = model.tmpTransactionFiles.find{it.id == transactionId} ?: return
+    Logger.log("failing transaction $transaction","none")
     transaction.failTransaction()
 }
 suspend fun uploadFile(server: PipelineContext<Unit, ApplicationCall>, model: TmpServerModel)
@@ -122,8 +123,8 @@ suspend fun uploadFile(server: PipelineContext<Unit, ApplicationCall>, model: Tm
 
     }catch (e: UnknownFieldException)
     {
-        e.printStackTrace()
-        println("Here1")
+        //e.printStackTrace()
+        //println("Here1")
         server.call.respond(HttpStatusCode.Conflict)
         if(isPointRelated)
         {
@@ -132,8 +133,8 @@ suspend fun uploadFile(server: PipelineContext<Unit, ApplicationCall>, model: Tm
         File("${GetJarPath.currentWorkingDirectory}/files/$fileName").delete()
     } catch (e: TransactionStateException)
     {
-        e.printStackTrace()
-        println("Here2")
+        //e.printStackTrace()
+       // println("Here2")
         server.call.respond(HttpStatusCode.FailedDependency, e.stackTrace)
         if(isPointRelated)
         {
@@ -143,9 +144,9 @@ suspend fun uploadFile(server: PipelineContext<Unit, ApplicationCall>, model: Tm
     }
     catch (e: Exception)
     {
-        e.printStackTrace()
+        //e.printStackTrace()
         server.call.respond(HttpStatusCode.InternalServerError, e.stackTrace)
-        println("Here3")
+        //println("Here3")
         if(isPointRelated)
         {
             failTransaction(transaction?.id,model)
@@ -165,11 +166,11 @@ suspend fun downloadFile(server: PipelineContext<Unit, ApplicationCall>, model: 
         server.call.respond(HttpStatusCode.Conflict,"NoName")
         return
     }
-    println("${GetJarPath.currentWorkingDirectory}/files/$fileName")
+    //println("${GetJarPath.currentWorkingDirectory}/files/$fileName")
     val file = File("${GetJarPath.currentWorkingDirectory}/files/$fileName")
     if( file.exists())
     {
-        println("Here")
+        //println("Here")
         server.call.respondFile(file)
     } else
     {

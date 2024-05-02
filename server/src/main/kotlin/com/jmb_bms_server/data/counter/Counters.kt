@@ -12,16 +12,11 @@ object Counters {
 
     private var countersCollection: MongoCollection<CntRow>? = null
 
-    private val suffix = "_cnt"
+    private const val suffix = "_cnt"
 
     fun setCountersCollection(db: MongoDatabase)
     {
         countersCollection = db.getCollection<CntRow>("counters")
-    }
-
-    private suspend fun createCounter(id: String)
-    {
-        countersCollection?.insertOne(CntRow(id,0))
     }
 
     suspend fun getCntAndInc(id: String): Long
@@ -45,6 +40,11 @@ object Counters {
     suspend fun removeCounter(id: String)
     {
         countersCollection?.deleteOne(Filters.eq("_id",id + suffix))
+    }
+
+    private suspend fun createCounter(id: String)
+    {
+        countersCollection?.insertOne(CntRow(id,0))
     }
 
 }

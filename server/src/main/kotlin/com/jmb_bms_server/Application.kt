@@ -9,6 +9,7 @@ import com.jmb_bms_server.terminal.TerminalSh
 import com.jmb_bms_server.utils.*
 import io.ktor.network.tls.certificates.*
 import io.ktor.server.application.*
+import io.ktor.server.engine.*
 import io.ktor.server.routing.*
 import io.ktor.server.sessions.*
 import io.ktor.server.websocket.*
@@ -85,6 +86,15 @@ fun readConfiguration(): Map<String, String>?
     }
 
 }
+fun a()
+{
+    val a =commandLineEnvironment(
+        arrayOf("-config=${GetJarPath.currentWorkingDirectory}/config/application.conf")
+    ).config.property("database.connectionString").getString()
+
+    println(a)
+}
+
 
 private var model: TmpServerModel? = null
 private var terminalSh: TerminalSh? = null
@@ -92,7 +102,9 @@ private var terminalSh: TerminalSh? = null
 //@OptIn(DelicateCoroutinesApi::class)
 fun main() {
 
-    readConfiguration() ?: return
+   //a()
+
+    //readConfiguration() ?: return
 
     val input = initalDialog()
 
@@ -123,16 +135,7 @@ fun main() {
 }
 
 fun Application.module() {
-    //configureSecurity()
-    //configureSerialization()
-    //configureSockets()
-    //configureRouting()
 
-
-
-    println(environment.config.port)
-    println(environment.config.host)
-    println(environment.config.toMap().toString())
 
     install(WebSockets)
     {

@@ -11,6 +11,7 @@ import com.jmb_bms_server.data.user.StorableUserProfile
 import com.jmb_bms_server.data.user.UserProfile
 import com.jmb_bms_server.data.user.UserSession
 import com.jmb_bms_server.utils.GetJarPath
+import com.jmb_bms_server.utils.Logger
 import com.jmb_bms_server.utils.Transaction
 import com.mongodb.client.model.Filters
 import com.mongodb.client.model.Updates
@@ -35,7 +36,7 @@ class TmpServerModel(
     val collection: MongoCollection<StorableUserProfile>,
     val teamCollection: MongoCollection<StorableTeamEntry>,
     val pointCollection: MongoCollection<StorablePointEntry>,
-    val db: MongoDatabase,
+    db: MongoDatabase,
     restoreFromDb: Boolean) {
 
     val userSet = Collections.synchronizedSet(HashSet<UserProfile>())
@@ -140,7 +141,7 @@ class TmpServerModel(
 
     suspend fun checkAndAddReconectedUser(userProfile: UserProfile, session: DefaultWebSocketSession): UserProfile?
     {
-        println(userProfile._id.get().toString())
+        //println(userProfile._id.get().toString())
         val profile = userSet.find { it._id.get().toString() == userProfile._id.get().toString() }
         if(profile == null)
         {
@@ -156,15 +157,15 @@ class TmpServerModel(
         {
             if(sessionEntry.session.get() == null)
             {
-                println("OverHere")
+               // println("OverHere")
                 userSessionsSet.elementAt(userSessionsSet.indexOfFirst { it.userId.get().toString() == profile._id.get().toString() }).session.set(session)
             } else
             {
                 sessionEntry.session.get()?.send(Frame.Ping(ByteArray(0)))
-                delay(2000)
+                delay(15000) //3000
 
                 if(sessionEntry.session.get() == null) return checkAndAddReconectedUser(userProfile, session)
-                println("User with same ID ${userProfile._id} already has active connection with server")
+                Logger.log("User with same ID ${userProfile._id} already has active connection with server","none")
                 return null
             }
         }
@@ -207,17 +208,17 @@ class TmpServerModel(
 
         return try {
             collection.find(Filters.eq(newUserProfile::userName.name, newUserProfile.userName.get())).first()
-            println("Found something")
+            Logger.log("Found something",newUserProfile.userName.get())
             false
         } catch (_: NoSuchElementException) {
-            println("Storing id and user session")
+            Logger.log("Storing id and user session",newUserProfile.userName.get())
             collection.insertOne(newUserProfile.getStorableUserProfile()).insertedId ?: return false //if this fails it will be fun
             val id = collection.find<StorableUserProfile>(Filters.eq(UserProfile::userName.name,newUserProfile.userName.get())).toList().first()._id
             newUserProfile._id.set(id)
             userSet.add(newUserProfile)
             userSessionsSet.add(UserSession(AtomicReference(id), AtomicReference(session)))
             addOrRemoveUserFromGeneral(id.toString(),true)
-            println("Stored session")
+            Logger.log("Stored session",newUserProfile.userName.get())
             true
         }
     }
@@ -312,12 +313,11 @@ class TmpServerModel(
             val teamMates = findAllUserWithinTeam(teamEntry._id.get() ?: ObjectId())
             if(teamMates.isEmpty())
             {
-                println("No other users in team... Deleting team ${teamEntry.teamName.get()}")
+                Logger.log("No other users in team... Deleting team ${teamEntry.teamName.get()}",userProfile.userName.get())
                 removeTeam(teamEntry)
                 sendMessageToAllConnected(Messages.teamDeletion(teamEntry._id.get().toString(),false))
                 return
             }
-            println(teamMates)
             val newLeader = userSet.find { it._id.get().toString() == teamMates.first()._id.toString()  }
             teamEntry.teamLead.set(newLeader!!._id.get())
             sendMessageToAllConnected( Messages.changingTeamLeader(teamEntry,newLeader))

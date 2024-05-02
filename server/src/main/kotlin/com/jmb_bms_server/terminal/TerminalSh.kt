@@ -6,6 +6,7 @@ import com.jmb_bms_server.*
 import com.jmb_bms_server.MessagesJsons.Messages
 import com.jmb_bms_server.utils.Configuration
 import com.jmb_bms_server.utils.GetJarPath
+import com.jmb_bms_server.utils.Logger
 import com.typesafe.config.ConfigFactory
 import io.ktor.server.config.*
 import io.ktor.server.engine.*
@@ -105,8 +106,7 @@ class TerminalSh(private val model: TmpServerModel, ) {
     }
 
     private fun c(params: List<String>?){
-        runBlocking {
-        }
+       // Logger.log("test test test", 5)
     }
     fun generateUsers()
     {
@@ -140,6 +140,31 @@ class TerminalSh(private val model: TmpServerModel, ) {
             "off" -> debug = false
             else -> println("Unknown option ${params[1]}")
         }
+    }
+
+    private fun t()
+    {
+        userCommandsHandler.simMoveRandom(listOf("","1","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","2","360","10000"))
+/*        userCommandsHandler.simMoveRandom(listOf("","3","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","4","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","5","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","6","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","7","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","8","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","9","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","10","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","11","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","12","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","13","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","14","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","15","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","16","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","17","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","18","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","19","360","10000"))
+        userCommandsHandler.simMoveRandom(listOf("","20","360","10000"))*/
+
     }
 
     private fun parseCommand(line: String)
@@ -213,6 +238,7 @@ class TerminalSh(private val model: TmpServerModel, ) {
                 "a" -> allConnected()
                 "d" -> unConnectDelta()
                 "g" -> generateUsers()
+                "t" -> t()
                 else -> println("Unknown command... Enter help to list available commands")
             }
         }

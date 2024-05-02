@@ -8,16 +8,13 @@ import com.jmb_bms_server.data.team.TeamEntry
 import com.jmb_bms_server.data.user.UserProfile
 import com.jmb_bms_server.data.user.UserSession
 import com.jmb_bms_server.terminal.TerminalSh
-import com.jmb_bms_server.utils.GetJarPath
-import com.jmb_bms_server.utils.MissingParameter
-import com.jmb_bms_server.utils.Transaction
-import com.jmb_bms_server.utils.TransactionState
+import com.jmb_bms_server.utils.*
 import com.mongodb.client.model.Updates
 import io.ktor.websocket.*
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import org.bson.types.ObjectId
 import java.io.File
+import java.io.IOException
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
@@ -43,18 +40,16 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
     }
 
 
-    private fun getOpcode(map: Map<String, Any?>): Double? {
-        return map["opCode"] as? Double
+    private fun getOpcode(map: Map<String, Any?>): Int? {
+        return (map["opCode"] as? Double)?.toInt()
     }
 
     private fun getTeamId(map: Map<String, Any?>): String? = map["_id"] as? String
 
-    private fun threadRun(code: suspend () -> Unit)
+    private fun coroutineRun(code: suspend () -> Unit)
     {
-        thread {
-            runBlocking {
-                code()
-            }
+        CoroutineScope(Dispatchers.IO).launch {
+            code()
         }
     }
 
@@ -65,13 +60,16 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
         if( lat == null || long == null)
         {
+            Logger.log(" stopped sharing location, last recorded location is:" +
+                    " Lat ${userProfile.location.get()?.lat?.get()} - Long ${userProfile.location.get()?.long?.get()}",userProfile.userName.get())
             userProfile.location.set( null )
-
         } else
         {
             if(userProfile.location.get() == null) userProfile.location.set(Location(AtomicReference( 0.0),AtomicReference(0.0)))
             userProfile.location.get()!!.lat.set(lat)
             userProfile.location.get()!!.long.set(long)
+            Logger.log(" sent location update, new values:" +
+                    " Lat ${userProfile.location.get()?.lat?.get()} - Long ${userProfile.location.get()?.long?.get()}",userProfile.userName.get())
         }
         thread {
             runBlocking{
@@ -100,7 +98,9 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
     private fun disconnectUserAndRelayIt(params: Map<String, Any?>)
     {
         userInitiatedClose = true
-        println("User with Id: ${userProfile._id} and username: ${userProfile.userName} is disconnecting\nReason: ${params["reason"] as? String ?: "none"}")
+        Logger.log("User is disconnecting\nReason: ${params["reason"] as? String ?: "none"}"
+            ,userProfile.userName.get())
+
         userProfile.connected.set(false)
         userSession.session.set(null)
         connectionState = ConnectionState.NOT_CONNECTED
@@ -180,75 +180,90 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
     private fun handleLeaderDeletingHisTeam(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
             val teamId = getTeamId(params)
 
             if(teamId == null)
             {
+                Logger.log(" Tried to delete team but there was no teamId",userProfile.userName.get())
                 session.send(Frame.Text(Messages.teamDeletion("",true)))
-                return@threadRun
+                return@coroutineRun
             }
             val team = getTeamByIdAndCheckLead(teamId)
 
             if(team == null)
             {
+                Logger.log("tried to delete not existing team or user is not leader",userProfile.userName.get())
                 session.send(Frame.Text(Messages.teamDeletion("",true)))
-                return@threadRun
+                return@coroutineRun
             }
+            Logger.log("going to delete team ${team.teamName.get()}",userProfile.userName.get())
             terminalSh.teamCommandsHandler.deleteTeam(team.teamName.get())
         }
     }
 
     private fun handleMemberAddOrDel(params: Map<String, Any?>)
     {
-        threadRun {
-            val teamId = getTeamId(params) ?: return@threadRun
-            val memberId = params["memberId"] as? String ?: return@threadRun
-            val adding = params["adding"] as? Boolean ?: return@threadRun
+        coroutineRun {
+            Logger.log("user is going to update member list",userProfile.userName.get())
+            val teamId = getTeamId(params) ?: return@coroutineRun
+            val memberId = params["memberId"] as? String ?: return@coroutineRun
+            val adding = params["adding"] as? Boolean ?: return@coroutineRun
 
-            val team = getTeamByIdAndCheckLead(teamId) ?: return@threadRun
+            val team = getTeamByIdAndCheckLead(teamId) ?: return@coroutineRun
+
+            Logger.log("All parameters where sent",userProfile.userName.get())
 
             val member = serverModel.userSet.find { it._id.get().toString() == memberId }?.userName?.get()
                 ?: serverModel.teamsSet.find { it._id.get().toString() == memberId }?.teamName?.get()
-                ?: return@threadRun
+                ?: return@coroutineRun
 
+            Logger.log("adding: $adding member $member",userProfile.userName.get())
             terminalSh.teamCommandsHandler.addUsersOrTeamsToTeam(member,team.teamName.get(),adding)
         }
     }
 
     private fun handleTeamLeaderChange(params: Map<String, Any?>)
     {
-        threadRun {
-            val teamId = getTeamId(params) ?: return@threadRun
-            val newLeaderId = params["newLeaderId"] as? String ?: return@threadRun
+        coroutineRun {
+            Logger.log("updating team leader",userProfile.userName.get())
+            val teamId = getTeamId(params) ?: return@coroutineRun
+            val newLeaderId = params["newLeaderId"] as? String ?: return@coroutineRun
 
-            val team = getTeamByIdAndCheckLead(teamId) ?: return@threadRun
-            val userName = serverModel.userSet.find { it._id.get().toString() == newLeaderId }?.userName?.get() ?: return@threadRun
+            val team = getTeamByIdAndCheckLead(teamId) ?: return@coroutineRun
+            val userName = serverModel.userSet.find { it._id.get().toString() == newLeaderId }?.userName?.get() ?: return@coroutineRun
+
+            Logger.log("all parameters where sent, updating team leader...",userProfile.userName.get())
+
             terminalSh.teamCommandsHandler.updateLeader(team.teamName.get(),userName)
         }
     }
 
     private fun handleTeamUpdate(params: Map<String, Any?>)
     {
-        threadRun {
-            val teamId = getTeamId(params) ?: return@threadRun
-            val newName = params["newName"] as? String ?: return@threadRun
-            val newIcon = params["newIcon"] as? String ?: return@threadRun
+        coroutineRun {
+            Logger.log("updating team",userProfile.userName.get())
+            val teamId = getTeamId(params) ?: return@coroutineRun
+            val newName = params["newName"] as? String ?: return@coroutineRun
+            val newIcon = params["newIcon"] as? String ?: return@coroutineRun
+            val team = getTeamByIdAndCheckLead(teamId) ?: return@coroutineRun
 
-            println(newIcon)
-            val team = getTeamByIdAndCheckLead(teamId) ?: return@threadRun
 
+            Logger.log("all parameters where sent, updating team...",userProfile.userName.get())
             terminalSh.teamCommandsHandler.updateTeam(team.teamName.get(),newIcon,newName)
         }
     }
 
     private fun handleAllTurnOnLocReq(params: Map<String, Any?>)
     {
-        threadRun {
-            val teamId = getTeamId(params) ?: return@threadRun
-            getTeamByIdAndCheckLead(teamId) ?: return@threadRun
+        coroutineRun {
+            Logger.log("trying to change team members location sharing",userProfile.userName.get())
+            val teamId = getTeamId(params) ?: return@coroutineRun
+            getTeamByIdAndCheckLead(teamId) ?: return@coroutineRun
 
-            val on = params["on"] as? Boolean ?: return@threadRun
+            val on = params["on"] as? Boolean ?: return@coroutineRun
+
+            Logger.log("all paremeters where sent, turning location share for team $teamId to $on",userProfile.userName.get())
 
             terminalSh.teamCommandsHandler.teamLocSh(teamId,on)
         }
@@ -256,17 +271,21 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
     private fun handleMemberLocationSharingReq(params: Map<String, Any?>)
     {
-        threadRun {
-            val teamId = getTeamId(params) ?: return@threadRun
-            val userId = params["userId"] as? String ?: return@threadRun
+        coroutineRun {
+            Logger.log("trying to change location share for one user",userProfile.userName.get())
+            val teamId = getTeamId(params) ?: return@coroutineRun
+            val userId = params["userId"] as? String ?: return@coroutineRun
 
-            getTeamByIdAndCheckLead(teamId) ?: return@threadRun
+            getTeamByIdAndCheckLead(teamId) ?: return@coroutineRun
 
             if (serverModel.userSet.find { it._id.get().toString() == userId }?.teamEntry?.get()
                     ?.find { it.toString() == teamId } == null
             ) {
-                return@threadRun
+                return@coroutineRun
             }
+
+            Logger.log("got all parameters and given member $userId is in team $teamId, toggling location share...",userProfile.userName.get())
+
             serverModel.userSessionsSet.find { it.userId.get().toString() == userId }?.session?.get()
                 ?.send(Frame.Text(Messages.requestLocShChange()))
         }
@@ -275,6 +294,9 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
     private fun handleTeamLocUpdate(params: Map<String, Any?>,wholeMessage: String)
     {
         //TODO add location storing for team and indication that it is working
+
+        Logger.log("handling team location update",userProfile.userName.get())
+
         val id = params["_id"] as? String ?: return
         val lat = params["lat"]  as? Double
         val long = params["long"] as? Double
@@ -282,7 +304,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         val name = getTeamByIdAndCheckLead(id)?.teamName?.get() ?: return
         terminalSh.teamCommandsHandler.updateLocation(name,lat.toString(),long.toString())
 
-        threadRun {
+        coroutineRun {
             serverModel.userSessionsSet.forEach {
                 it.session.get()?.send(Frame.Text(wholeMessage))
             }
@@ -292,28 +314,33 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
     private fun failTransaction(id: String?)
     {
         val transaction = serverModel.tmpTransactionFiles.find { it.id == id } ?: return
+        Logger.log("Transaction $id has failed and all files are going to be deleted",userProfile.userName.get())
         transaction.failTransactionNoWait()
     }
 
     private fun handlePointCreation(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
             val localId = params["serverId"] as? String ?: throw MissingParameter("NoId")
-            println(localId)
+
             try {
 
                 val transaction = serverModel.tmpTransactionFiles.find { it.id == localId }
-                println("Transaction state: ${transaction?.transactionState}\n" +
-                        "   id: ${transaction?.id}\n" +
-                        "   files:")
+
+                var allFiles = ""
                 transaction?.files?.forEach {
-                    println(it)
+                    allFiles += (it + "\n")
                 }
+
+                Logger.log("Transaction state: ${transaction?.transactionState}\n" +
+                        "   id: ${transaction?.id}\n" +
+                        "   files: $allFiles",userProfile.userName.get())
+
                 if( transaction != null && transaction.transactionState.get() != TransactionState.IN_PROGRESS)
                 {
                     failTransaction(localId)
                     session.send(Frame.Text(Messages.pointCreationResult(false, reason = "WrongState")))
-                    return@threadRun
+                    return@coroutineRun
                 }
                 val existingPoint = serverModel.pointSet.find { it._id.get().toString() == localId }
 
@@ -326,9 +353,9 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
                     {
                         failTransaction(localId)
                         session.send(Frame.Text(Messages.pointCreationResult(false, reason = "Missing files")))
-                        return@threadRun
+                        return@coroutineRun
                     }
-                    println("Point was created")
+                    Logger.log("Point with $id was created", userProfile.userName.get())
                 } else
                 {
                     id = existingPoint._id.get().toString()
@@ -338,15 +365,15 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
                     {
                         failTransaction(localId)
                         session.send(Frame.Text(Messages.pointCreationResult(false, reason = "Missing files")))
-                        return@threadRun
+                        return@coroutineRun
                     }
-                    println("Point was updated")
+                    Logger.log("Point with $id was updated", userProfile.userName.get())
                 }
 
                 session.send(Frame.Text(Messages.pointCreationResult(true,id)))
                 val entry = serverModel.pointSet.find { it._id.get().toString() == id }
 
-                println(entry?.files)
+
 
                 serverModel.userSessionsSet.forEach {
 
@@ -354,50 +381,55 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
                         it.session.get()?.send(Frame.Text(Messages.pointEntry(entry!!)))
                 }
 
-                serverModel.tmpTransactionFiles.find { it.id == localId }?.finishTransaction() ?: return@threadRun
+                serverModel.tmpTransactionFiles.find { it.id == localId }?.finishTransaction() ?: return@coroutineRun
 
             }catch (e: MissingParameter)
             {
+                Logger.log("message has missing parameter ${e.message}",userProfile.userName.get())
                 failTransaction(localId)
                 session.send(Frame.Text(Messages.pointCreationResult(false,localId, reason = e.message)))
-                return@threadRun
+                return@coroutineRun
             } catch (e: Exception)
             {
+                Logger.log("general excetpion ${e.message}",userProfile.userName.get())
                 e.printStackTrace()
                 failTransaction(localId)
                 session.send(Frame.Text(Messages.pointCreationResult(false,localId ,reason = e.message)))
-                return@threadRun
+                return@coroutineRun
             }
         }
     }
     private fun handlePointDeletion(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
+            Logger.log("trying to delete point",userProfile.userName.get())
             try {
                 terminalSh.pointCommandsHandler.deletePoint(params, userProfile._id.get().toString())
             } catch (e: MissingParameter) {
               //  session.send(Frame.Text(Messages.pointCreationResult(false, reason = e.message)))
-                e.printStackTrace()
-                return@threadRun
+                Logger.log("Could not deletet point because there was missing parameter ${e.message}",userProfile.userName.get())
+
+                return@coroutineRun
             }
         }
     }
 
     private fun handlePointUpdate(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
+            Logger.log("trying to update point",userProfile.userName.get())
             try {
                 terminalSh.pointCommandsHandler.updatePoint(params,userProfile._id.get().toString())
             } catch (_:MissingParameter)
             {
-                return@threadRun
+                return@coroutineRun
             }
         }
     }
 
     private fun handleSyncRequest(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
             val owner = userProfile._id.get().toString()
 
             terminalSh.pointCommandsHandler.syncWithClient(params,owner)
@@ -418,7 +450,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
     private fun handleChatRoomCreation(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
            val res = terminalSh.chatCommandsHandler.createChatRoom(params, userProfile._id.get().toString())
 
             if(!res)
@@ -430,28 +462,28 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
     private fun handleChatRoomDeletion(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
             terminalSh.chatCommandsHandler.deleteChatRoom(params,userProfile._id.get().toString())
         }
     }
 
     private fun handleManageChatRoomUsers(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
             terminalSh.chatCommandsHandler.manageChatUsers(params,userProfile._id.get().toString())
         }
     }
 
     private fun handleChatRoomOwnerChange(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
             terminalSh.chatCommandsHandler.changeChatOwner(params,userProfile._id.get().toString())
         }
     }
 
     private fun handleSentMessage(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
             val transactionId = params["transactionId"] as? String
 
             val transaction = serverModel.tmpTransactionFiles.find { it.id == transactionId }
@@ -460,7 +492,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             {
                 transaction.failTransaction()
                 //TODO send fail to user
-                return@threadRun
+                return@coroutineRun
             }
 
             val res = terminalSh.chatCommandsHandler.sendMessage(params,userProfile._id.get().toString(),userProfile.userName.get(),userProfile.symbolCode.get())
@@ -479,7 +511,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
     private fun handleFetchMessages(params: Map<String, Any?>)
     {
-        threadRun {
+        coroutineRun {
             terminalSh.chatCommandsHandler.fetchMessages(params, userProfile._id.get().toString())
         }
     }
@@ -489,33 +521,33 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         val params = parseServerJson(frame.readText())
         when(getOpcode(params))
         {
-            0.0 -> disconnectUserAndRelayIt(params)
-            2.0 -> handleUserUpdatingProfile(params)
-            3.0 -> relayUpdatedLocation(params)
+            0 -> disconnectUserAndRelayIt(params)
+            2 -> handleUserUpdatingProfile(params)
+            3 -> relayUpdatedLocation(params)
 
-            21.0 -> handleLeaderCreatingTeam(params)
-            22.0 -> handleLeaderDeletingHisTeam(params)
-            23.0 -> handleMemberAddOrDel(params)
-            24.0 -> handleTeamLeaderChange(params)
-            25.0 -> handleTeamUpdate(params)
-            26.0 -> handleAllTurnOnLocReq(params)
-            27.0 -> handleMemberLocationSharingReq(params)
-            29.0 -> handleTeamLocUpdate(params,frame.readText())
+            21 -> handleLeaderCreatingTeam(params)
+            22 -> handleLeaderDeletingHisTeam(params)
+            23 -> handleMemberAddOrDel(params)
+            24 -> handleTeamLeaderChange(params)
+            25 -> handleTeamUpdate(params)
+            26 -> handleAllTurnOnLocReq(params)
+            27 -> handleMemberLocationSharingReq(params)
+            29 -> handleTeamLocUpdate(params,frame.readText())
 
-            40.0 -> handlePointCreation(params)
-            42.0 -> handlePointDeletion(params)
-            43.0 -> handlePointUpdate(params)
-            44.0 -> handleSyncRequest(params)
+            40 -> handlePointCreation(params)
+            42 -> handlePointDeletion(params)
+            43 -> handlePointUpdate(params)
+            44 -> handleSyncRequest(params)
 
-            49.0 -> handleFailedTransactionAcknowledgement(params)
-            50.0 -> {}
+            49 -> handleFailedTransactionAcknowledgement(params)
+            50 -> {}
 
-            60.0 -> handleChatRoomCreation(params)
-            61.0 -> handleChatRoomDeletion(params)
-            62.0 -> handleManageChatRoomUsers(params)
-            63.0 -> handleChatRoomOwnerChange(params)
-            64.0 -> handleSentMessage(params)
-            65.0 -> handleFetchMessages(params)
+            60 -> handleChatRoomCreation(params)
+            61 -> handleChatRoomDeletion(params)
+            62 -> handleManageChatRoomUsers(params)
+            63 -> handleChatRoomOwnerChange(params)
+            64 -> handleSentMessage(params)
+            65 -> handleFetchMessages(params)
         }
     }
 
@@ -523,7 +555,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         userInitiatedClose = true
         if (!sentBye)
         {
-            println("User with Id: ${userProfile._id} and username: ${userProfile.userName} is disconnecting")
+            Logger.log("User with Id: ${userProfile._id} and username: ${userProfile.userName} is disconnecting",userProfile.userName.get())
             userProfile.location.set( null )
             connectionState = ConnectionState.NOT_CONNECTED
             handleDiscRelay()
@@ -531,7 +563,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             serverModel.tmpTransactionFiles.find { it.owner == userProfile._id.get().toString() }?.failTransaction()
         }
         userProfile.connected.set(false)
-        println("${userProfile._id.get()} Close reason: ${frame.readReason()?.message}\nCode: ${frame.readReason()?.code}")
+        Logger.log("${userProfile._id.get()} Close reason: ${frame.readReason()?.message}\nCode: ${frame.readReason()?.code}",userProfile.userName.get())
     }
 
     private fun handleFrame(frame: Frame)
@@ -551,7 +583,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             errorLambda()
             return false
         }
-        if( getOpcode(parseServerJson((frame as Frame.Text).readText())) != opCode.toDouble() )
+        if( getOpcode(parseServerJson((frame as Frame.Text).readText())) != opCode )
         {
             errorLambda()
             return false
@@ -569,7 +601,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         )
         if( !serverModel.addNewUser(newProfile,session) )
         {
-            println("User with username $userName already exists")
+            Logger.log("User with username $userName already exists",userName,6)
             session.send(Frame.Text(Messages.userNameAlreadyInUse()))
             connectionState = ConnectionState.ERROR
             return false
@@ -577,7 +609,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         val profile = serverModel.userSet.find { it.userName.get() == userName }
         if( profile == null)
         {
-            println("Internal error occurred in <UserConnectedHandler.kt> createUserAndStoreItInDb line 71")
+            Logger.log("Internal error occurred in <UserConnectedHandler.kt> createUserAndStoreItInDb line 71",userName,6)
             session.send(Frame.Text(Messages.bye("Internal server error")))
             session.send(Frame.Close(CloseReason(CloseReason.Codes.INTERNAL_ERROR,"Internal server error")))
             connectionState = ConnectionState.ERROR
@@ -586,7 +618,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         val storedSession = serverModel.userSessionsSet.find{ it.userId.get() == profile._id.get()}
         if( storedSession == null )
         {
-            println("Error: Session was not stored in server model")
+            Logger.log("Error: Session was not stored in server model",userName,6)
             session.send(Frame.Text(Messages.bye("Internal server error")))
             session.send(Frame.Close(CloseReason(CloseReason.Codes.INTERNAL_ERROR,"Internal server error")))
             connectionState = ConnectionState.ERROR
@@ -601,7 +633,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
     private suspend fun findAndCheckUserById(id: ObjectId, userName: String, symbolCode: String): Boolean
     {
-        val profile =  serverModel.checkAndAddReconectedUser(
+        val profile = serverModel.checkAndAddReconectedUser(
             UserProfile(
                 AtomicReference(id),
                 AtomicReference(userName),
@@ -613,6 +645,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
         if(profile == null)
         {
+
             session.send(Frame.Text(Messages.userNameAlreadyInUse()))
             connectionState = ConnectionState.ERROR
             return false
@@ -627,7 +660,6 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             return false
         }
 
-        println("Checking by id")
         userSession = storedSession
         userProfile = profile
         session.send(Frame.Text(Messages.connectionSuccesFull(profile._id.toString(),userProfile.teamEntry.get())))
@@ -644,7 +676,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
         if(userName == null || symbolCode == null)
         {
-            println("Username or symbol code was null... Terminating connection")
+            Logger.log("Username or symbol code was null... Terminating connection","unknown",6)
             session.send(Frame.Text(Messages.bye("Username or symbol code was null")))
             session.send(Frame.Close(CloseReason(CloseReason.Codes.VIOLATED_POLICY,"Username or symbol code was null")))
             connectionState = ConnectionState.ERROR
@@ -664,19 +696,19 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         var frame = session.incoming.receive()
 
         if( !checkMsgTypeAndOpCode(frame,FrameType.TEXT,-1){
-                println("Initial frame was not text or had wrong opCode")
+                Logger.log("Initial frame was not text or had wrong opCode","unknown",6)
                 session.send(Frame.Close(CloseReason(CloseReason.Codes.VIOLATED_POLICY,"Wrong initial message")))
                 connectionState = ConnectionState.ERROR
             }) return
 
         session.send(Frame.Text(Messages.helloThere()))
         connectionState = ConnectionState.NEGOTIATING
-        println("Negotiating")
+        Logger.log("Negotiating","unknown",1)
 
         frame = session.incoming.receive()
 
         if (!checkMsgTypeAndOpCode(frame, FrameType.TEXT, 1) {
-            println("Frame was not text frame or had wrong opcode")
+            Logger.log("Frame was not text frame or had wrong opcode","unknown",6)
                 session.send(
                     Frame.Close(
                         CloseReason(
@@ -687,7 +719,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
                 )
                 connectionState = ConnectionState.ERROR
         }) return
-        println("Creating user profile")
+        Logger.log("Creating user profile","unknown",1)
         //TODO renegotiation request is sent in create user function
         //TODO connection state changes in create users functions
         val params = parseServerJson((frame as Frame.Text).readText())
@@ -699,6 +731,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
     {
         //TODO add points here
 
+        Logger.log("Sending profiles and chats to user",userProfile.userName.get())
         serverModel.userSet.forEach { profile ->
             if(profile.connected.get() && (profile._id.get().toString() != userProfile._id.get().toString())) session.send(Frame.Text(Messages.sendUserProfile(profile)))
         }
@@ -712,6 +745,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
                 session.send(Frame.Text(Messages.chatRoomCreation(it)))
             }
         }
+        Logger.log("Finished sending users and chats to user",userProfile.userName.get())
     }
     private suspend fun notifyOtherUsers()
     {
@@ -724,6 +758,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
     //popis stavby rodinny dom
     //druh stavby 10
     //dnesny tum
+    @OptIn(ExperimentalCoroutinesApi::class)
     suspend fun handleConnection()
     {
        //no
@@ -731,15 +766,18 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             initSequence()
             if(connectionState != ConnectionState.CONNECTED) return
             sendProfilesAndPoints()
-            println("Notifying other users")
             notifyOtherUsers()
-            println("Done notifying other users")
+
+            Logger.log("User ${userProfile.userName.get()} with id ${userProfile._id.get().toString()} has connected to server.",userProfile.userName.get())
 
             for (frame in session.incoming)
             {
                 handleFrame(frame)
             }
-            println("Got from session.incoming")
+
+            Logger.log("User ${userProfile.userName.get()} with id ${userProfile._id.get().toString()}" +
+                    "has disconnected from server\n/*session.closeReason.getCompleted().toString()*/",userProfile.userName.get(),1)
+
             userSession.session.set(null)
             userProfile.connected.set(false)
             serverModel.tmpTransactionFiles.find { it.owner == userProfile._id.get().toString() }?.failTransaction()
@@ -749,23 +787,37 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             }
         } catch (e: Exception)
         {
-            println("[${LocalDateTime.now()}]  Error: " + e.message + "\n" + e.cause?.message + "\n")
             e.printStackTrace()
-
+            Logger.log("Error: ${e.message}",userProfile.userName.get(),9)
             if(session.isActive)
             {
                 try {
-                    session.send(Frame.Text(Messages.bye("Internal server error: ${e.message}")))
-                    session.send(Frame.Close(CloseReason(CloseReason.Codes.INTERNAL_ERROR,"Internal server error: ${e.message}")))
+                    if(e.message == "Ping timeout")
+                    {
+                        session.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER,"${e.message}"))
+                    }else
+                    {
+                        session.send(Frame.Text(Messages.bye("Internal server error: ${e.message}")))
+                        session.send(Frame.Close(CloseReason(CloseReason.Codes.INTERNAL_ERROR,"Internal server error: ${e.message}")))
+                    }
+
                 } catch (e: Exception)
                 {
-                    println("Error: ${e.message}")
+                    Logger.log("Error: ${e.message}",userProfile.userName.get())
                 }
             }
+            session.close()
             userSession.session.set(null)
             userProfile.connected.set(false)
 
+            serverModel.userSessionsSet.forEach {
+                it?.session?.get()?.send(Frame.Text(Messages.userDisconnected(userProfile._id.get()!!.toHexString())))
+            }
+
             serverModel.tmpTransactionFiles.find { it.owner == userProfile._id.get().toString() }?.failTransaction()
+        } catch (e: IOException)
+        {
+
         }
     }
 }
