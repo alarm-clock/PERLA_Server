@@ -51,7 +51,7 @@ if [ "$GENERATE" == "yes" ]; then
     KEY_STORE_NAME="${KEY_STORE_NAME}.jks"
     SAN="SAN=${SAN}"
 
-    keytool  -keystore "$KEY_STORE_NAME" -storepass "$PWD" -alias "$ALIAS" -deststoretype pkcs12  -genkeypair -keyalg RSA -validity 395 -keysize 2048 -sigalg SHA256withRSA  -ext "SAN=$SAN"
+    keytool  -keystore "$KEY_STORE_NAME" -storepass "$PWD" -alias "$ALIAS" -deststoretype pkcs12  -genkeypair -keyalg RSA -validity 395 -keysize 2048 -sigalg SHA256withRSA  -ext "$SAN"
 
     echo "Key store name: $KEY_STORE_NAME, Password: $PWD, Alias: $ALIAS, SAN: $SAN"
 fi
