@@ -53,6 +53,7 @@ if [ "$GENERATE" == "yes" ]; then
 
     keytool  -keystore "$KEY_STORE_NAME" -storepass "$PWD" -alias "$ALIAS" -deststoretype pkcs12  -genkeypair -keyalg RSA -validity 395 -keysize 2048 -sigalg SHA256withRSA  -ext "$SAN"
 
+    #mv "$KEY_STORE_NAME"
     echo "Key store name: $KEY_STORE_NAME, Password: $PWD, Alias: $ALIAS, SAN: $SAN"
 fi
 exit 0

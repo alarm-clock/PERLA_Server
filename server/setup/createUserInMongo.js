@@ -2,11 +2,12 @@
 //change user and pwd properties how you like
 //note that you don't need to create database, server will do it on its own and database name will be serverDb
 //you want to only grant admin role serverDb database just uncomment line under roles and comment old line
+db = db.getSiblingDB('admin');
 db.createUser(
     {
-        user: "admin",
+        user: "Jarka",
         pwd: "pwd",
         roles: [{ role: "userAdminAnyDatabase", db: "admin" }]
-        //roles: [{ role: "userAdmin", db: "yourDatabaseName" }]
+        //roles: [{ role: "userAdmin", db: "serverDb" }]
     }
 )
