@@ -1,3 +1,3 @@
 #!/bin/bash
-mongo serverDb createAdminInMongo.js
+mongo serverDb setup/createUserInMongo.js
 exit $?
