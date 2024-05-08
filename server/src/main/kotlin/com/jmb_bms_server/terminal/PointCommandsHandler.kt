@@ -1,3 +1,8 @@
+/**
+ * @file: PointCommandsHandler.kt
+ * @author: Jozef Michal Bukas <xbukas00@stud.fit.vutbr.cz,jozefmbukas@gmail.com>
+ * Description: File containing PointCommandsHandler class
+ */
 package com.jmb_bms_server.terminal
 
 import com.jmb_bms_server.MessagesJsons.Messages
@@ -11,13 +16,22 @@ import com.mongodb.client.model.Updates
 import io.ktor.websocket.*
 import kotlinx.coroutines.runBlocking
 import org.bson.conversions.Bson
-import org.bson.types.ObjectId
 import java.io.File
-import java.nio.file.Files
 
+
+/**
+ * Class that implements all methods for points feature that are invoked as reaction to received message in UserConnectionHandler
+ *
+ * @property model server model, used for database operations and access user sessions
+ */
 class PointCommandsHandler(private val model: TmpServerModel) {
 
 
+    /**
+     * Method that prints point on stdout
+     *
+     * @param pointEntry Point that will be printed
+     */
     fun printPoint(pointEntry: PointEntry)
     {
         println("+-----------------------------------------+\n" +
@@ -33,6 +47,10 @@ class PointCommandsHandler(private val model: TmpServerModel) {
         println("+-----------------------------------------+")
     }
 
+    /**
+     * Method that prints all points stored in model.
+     *
+     */
     fun printAllPoints()
     {
         model.pointSet.forEach {
@@ -40,6 +58,11 @@ class PointCommandsHandler(private val model: TmpServerModel) {
         }
     }
 
+    /**
+     * Method that prints points identified by [name]
+     *
+     * @param name
+     */
     fun printPoint(name: String)
     {
         val points = model.pointSet.filter { it.name.get() == name }
@@ -49,9 +72,16 @@ class PointCommandsHandler(private val model: TmpServerModel) {
         }
     }
 
+    /**
+     * Method that compares files attached to point with possibly updated list and delete those that are not present
+     * in new list.
+     *
+     * @param oldFiles Files that are checked and may be possibly deleted if they are not in [newFiles] list
+     * @param newFiles Reference list with files
+     */
     private fun deleteFilesOnUpdate(oldFiles: List<String>, newFiles: List<String>?)
     {
-        if(newFiles.isNullOrEmpty())
+        if(newFiles.isNullOrEmpty()) // delete all files
         {
             oldFiles.forEach {
                 File("${GetJarPath.currentWorkingDirectory}/files/$it").delete()
@@ -68,7 +98,16 @@ class PointCommandsHandler(private val model: TmpServerModel) {
     }
 
 
-
+    /**
+     * Method that creates points from parsed JSON message sent by client. Method also checks if message contains all
+     * data necessary to create point.
+     *
+     * @throws MissingParameter
+     * @param params Parsed JSON message into [Map]<[key, value]>
+     * @param userId ID of user that is creating point
+     * @param ownerName Users name
+     * @return Points serverId on success else null
+     */
     @Throws(MissingParameter::class)
     suspend fun addPoint(params: Map<String, Any?>, userId: String, ownerName: String): String?
     {
@@ -111,6 +150,12 @@ class PointCommandsHandler(private val model: TmpServerModel) {
             })
     }
 
+    /**
+     * Method that checks if all attached files where uploaded and if yes then adds point to database
+     *
+     * @param newPointEntry New point that will be added
+     * @return Point's ID on success else null
+     */
     private suspend fun addPoint(newPointEntry: PointEntry): String?
     {
         if( !checkIfAllFilesAreUploaded(newPointEntry.files) )
@@ -122,6 +167,11 @@ class PointCommandsHandler(private val model: TmpServerModel) {
         return model.addPoint(newPointEntry)
     }
 
+    /**
+     * Method that updates point from cmd line command parsed into [list]
+     *
+     * @param list Parsed cmd line command in [List]: {updatePoint, pointID, {key, value {key, value {...}}}}
+     */
     fun updatePoint(list: List<String>?)
     {
         runBlocking {
@@ -149,6 +199,15 @@ class PointCommandsHandler(private val model: TmpServerModel) {
     }
 
 
+    /**
+     * Method that updates point from clients JSON message. Method also checks if user can update point and if message
+     * contains all data necessary to update point
+     *
+     * @throws MissingParameter
+     * @param params Parsed JSON message into [Map]<[key, value]>
+     * @param userId ID of user that is updating point
+     * @return True on success else false
+     */
     suspend fun updatePoint(params: Map<String, Any?>, userId: String) : Boolean
     {
         val id = params["serverId"] as? String ?: throw MissingParameter("NoId")
@@ -183,7 +242,7 @@ class PointCommandsHandler(private val model: TmpServerModel) {
                 "   ownerId: ${owner}\n" +
                 "   attached files:\nlocation: $lat - $long",userId)
 
-
+        //updates object is created based on what parameters are present in message
         val updates = Updates.combine(
             name?.let {
                 entry.name.set(it)
@@ -227,6 +286,14 @@ class PointCommandsHandler(private val model: TmpServerModel) {
         return true
     }
 
+    /**
+     * Method that deletes point from clients JSON message. Method also checks if user can delete point and if message
+     * contains all data necessary to delete point.
+     * @throws MissingParameter
+     * @param params Parsed JSON message into [Map]<[key, value]>
+     * @param userId ID of user that is deleting point
+     * @return True on success otherwise false
+     */
     suspend fun deletePoint(params: Map<String, Any?>, userId: String): Boolean
     {
         val id = params["serverId"] as? String ?: throw MissingParameter("NoId")
@@ -234,6 +301,13 @@ class PointCommandsHandler(private val model: TmpServerModel) {
         return deletePoint(id,userId)
     }
 
+    /**
+     * Method for deleting point identified by [id]
+     *
+     * @param id Deleted point's id
+     * @param userId ID of user that is deleting point
+     * @return True on success else false
+     */
     suspend fun deletePoint(id: String, userId: String): Boolean
     {
 
@@ -254,6 +328,12 @@ class PointCommandsHandler(private val model: TmpServerModel) {
         return true
     }
 
+    /**
+     * Method for deleting users point that he has deleted while he was offline from JSON message
+     *
+     * @param params Parsed JSON message into [Map]<[key, value]>
+     * @param userId ID of user with whom is server syncing
+     */
     suspend fun syncWithClient(params: Map<String, Any?>, userId: String)
     {
         val clientsPoints = params["ids"] as? List<String> ?: return

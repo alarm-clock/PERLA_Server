@@ -1,3 +1,8 @@
+/**
+ * @file: UploadFile.kt
+ * @author: Jozef Michal Bukas <xbukas00@stud.fit.vutbr.cz,jozefmbukas@gmail.com>
+ * Description: File containing methods related to file uploading and downloading
+ */
 package com.jmb_bms_server
 
 import com.jmb_bms_server.utils.*
@@ -11,6 +16,14 @@ import java.io.File
 import java.lang.Exception
 
 
+/**
+ * Method that validates if request is valid request or not. It checks if SESSION header has id of user that
+ * exists in system and has active connection.
+ *
+ * @param server [PipelineContext] from which header will be taken
+ * @param model [TmpServerModel] used to check for user
+ * @return UserID on success else null
+ */
 suspend fun validateRequest(server: PipelineContext<Unit, ApplicationCall>, model: TmpServerModel): String?
 {
     val id = server.call.request.headers["SESSION"]
@@ -47,6 +60,14 @@ suspend fun validateRequest(server: PipelineContext<Unit, ApplicationCall>, mode
     }
 }
 
+/**
+ * Method that tries to find existing transaction. If no transaction is found then new transaction is created.
+ *
+ * @param transactionId ID of transaction
+ * @param userId ID of user that is uploading file
+ * @param model Server model used to find transaction
+ * @return [Transaction]
+ */
 fun findTransaction(transactionId: String,userId: String, model: TmpServerModel): Transaction
 {
     var transaction = model.tmpTransactionFiles.find { it.id == transactionId }
@@ -61,6 +82,14 @@ fun findTransaction(transactionId: String,userId: String, model: TmpServerModel)
     return transaction
 }
 
+/**
+ * Method that adds new file to transaction
+ *
+ * @param transactionId ID of transaction
+ * @param userId ID of user who is uploading files
+ * @param model Server model
+ * @param fileName Stored file's name
+ */
 fun editTransaction(transactionId: String?, userId: String, model: TmpServerModel, fileName: String?)
 {
     transactionId ?: return
@@ -70,6 +99,12 @@ fun editTransaction(transactionId: String?, userId: String, model: TmpServerMode
     transaction.addFileName(fileName!!)
 }
 
+/**
+ * Method that fails transaction
+ *
+ * @param transactionId ID of transaction that will be failed
+ * @param model Server model
+ */
 fun failTransaction(transactionId: String?, model: TmpServerModel)
 {
     transactionId ?: return
@@ -77,6 +112,13 @@ fun failTransaction(transactionId: String?, model: TmpServerModel)
     Logger.log("failing transaction $transaction","none")
     transaction.failTransaction()
 }
+
+/**
+ * Method that handles file upload to server
+ *
+ * @param server [PipelineContext]
+ * @param model Server Model
+ */
 suspend fun uploadFile(server: PipelineContext<Unit, ApplicationCall>, model: TmpServerModel)
 {
     val multipart = server.call.receiveMultipart()
@@ -91,22 +133,28 @@ suspend fun uploadFile(server: PipelineContext<Unit, ApplicationCall>, model: Tm
         multipart.forEachPart { partData ->
             when(partData){
                 is PartData.FormItem -> {
+
+                    //parse text part
                     when(partData.name)
                     {
                         "transactionId" ->
                         {
+                            //finds transaction
                             val transactionId = partData.value
                             transaction = findTransaction(transactionId,id,model)
                             if(transaction!!.transactionState.get() != TransactionState.IN_PROGRESS) throw TransactionStateException("Transaction already failed or finished")
                         }
+                        //flag indicating that multiple files are in transaction
                         "point" -> isPointRelated = partData.value.toBoolean()
                     }
                 }
                 is PartData.FileItem -> {
                     try {
+                        //file saving
                         fileName = partData.save(GetJarPath.currentWorkingDirectory,id)
                     } catch (_:FileExistsException)
                     {
+                        //if file exists just stop upload and retirn success
                         fileAlreadyExists = true
                     }
                 }
@@ -156,6 +204,12 @@ suspend fun uploadFile(server: PipelineContext<Unit, ApplicationCall>, model: Tm
 }
 
 
+/**
+ * Function that handles file download request
+ *
+ * @param server
+ * @param model
+ */
 suspend fun downloadFile(server: PipelineContext<Unit, ApplicationCall>, model: TmpServerModel)
 {
     validateRequest(server, model) ?: return

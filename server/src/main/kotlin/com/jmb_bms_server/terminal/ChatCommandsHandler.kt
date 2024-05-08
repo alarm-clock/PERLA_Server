@@ -1,3 +1,8 @@
+/**
+ * @file: ChatCommandsHandler.kt
+ * @author: Jozef Michal Bukas <xbukas00@stud.fit.vutbr.cz,jozefmbukas@gmail.com>
+ * Description: File containing ChatCommandsHandler class
+ */
 package com.jmb_bms_server.terminal
 
 import com.jmb_bms_server.MessagesJsons.Messages
@@ -11,16 +16,30 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.bson.types.ObjectId
 
+/**
+ * Class that implements all methods for chat feature that are invoked as reaction to received message in UserConnectionHandler
+ *
+ * @property model [TmpServerModel] server model, used for database operations and access user sessions
+ */
 class ChatCommandsHandler(private val model: TmpServerModel) {
 
+    /**
+     * Method used to create chat room from parsed command in [list].
+     *
+     * @param list Parsed cmd line command into [List]<[String]>: {createChat, chat_name, userID, userID, ...}
+     */
     fun createChatRoom(list: List<String>?)
     {
+        //method that checks number of arguments is called before this invocation
         if(list == null)
         {
             println("Wrong number of arguments")
             return
         }
         CoroutineScope(Dispatchers.IO).launch {
+
+            //converting list to map so that same method can be used for both client and admin, don't have time
+            //to create same method twice, in the future I will do it not now. This applies to all other similar methods.
             val params = mutableMapOf<String, Any?>()
             params["name"] = list[1]
 
@@ -34,6 +53,14 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
         }
     }
 
+    /**
+     * Method used to create chat room from parsed JSON message received from client. This method also checks if
+     * message contains all values required to create chat room.
+     *
+     * @param params Parsed JSON message into [Map]<[key, value]>
+     * @param userId UserId of user that wants to create chat room
+     * @return True if chat room was created successfully otherwise false
+     */
     suspend fun createChatRoom(params: Map<String, Any?>, userId: String): Boolean
     {
         val name = params["name"] as? String ?: return false
@@ -53,6 +80,11 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
         return true
     }
 
+    /**
+     * Method used to delete chat room parsed command stored in [list]
+     *
+     * @param list Parsed cmd line command into [List]<[String]>: {deleteChat, chatRoomID}
+     */
     fun deleteChatRoom(list: List<String>?)
     {
         if(list == null)
@@ -70,6 +102,13 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
         }
     }
 
+    /**
+     * Method used to delete chat room from parsed JSON message sent by client. Method also checks if user is able to
+     * delete chat room and if message contains all values needed for chat deletion
+     *
+     * @param params Parsed JSON message into [Map]<[key, value]>
+     * @param userId ID of user that sent request to delete chat room
+     */
     suspend fun deleteChatRoom(params: Map<String, Any?>, userId: String)
     {
         val id = params["_id"] as? String ?: return
@@ -84,6 +123,11 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
         model.sendMessageToCertainGroup(Messages.deleteChatRoom(id),chat.members)
     }
 
+    /**
+     * Method used to update chat room members from parsed command in [list]
+     *
+     * @param list Parsed cmd line command into [List]<[String]>: {manageMembers, chatRoomId, {true ? false}, userId, userId, ...}
+     */
     fun manageChatUsers(list: List<String>?){
         if(list == null)
         {
@@ -106,6 +150,13 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
         }
     }
 
+    /**
+     * Method for managing users in chat room from parsed JSON message sent by client. Method also checks if user is able to
+     * manage users in chat room and if message contains all values needed to do operation
+     *
+     * @param params Parsed JSON message into [Map]<[key, value]>
+     * @param userId ID of user that is managing users in chat room
+     */
     suspend fun manageChatUsers(params: Map<String, Any?>, userId: String)
     {
         val id = params["_id"] as? String ?: return
@@ -132,6 +183,13 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
         }
     }
 
+    /**
+     * Method for changing chat room's owner from parsed JSON message sent by client. Method also checks if user is able to
+     * change chat room's owner and if message contains all values needed to do operation
+     *
+     * @param params Parsed JSON message into [Map]<[key, value]>
+     * @param userId ID of user that is changing chat room's owner
+     */
     suspend fun changeChatOwner(params: Map<String, Any?>, userId: String)
     {
         val id = params["_id"] as? String ?: return
@@ -143,6 +201,11 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
         model.sendMessageToCertainGroup(Messages.chatRoomCreation(chat), chat.members)
     }
 
+    /**
+     * Method that sends message to chat room from parsed command in [list]
+     *
+     * @param list Parsed cmd line command into [List]<[String]>: {sendMessage, chatRoomName, body of message ...}
+     */
     fun sendMessage(list: List<String>?)
     {
         if(list == null)
@@ -166,7 +229,17 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
         }
     }
 
-    suspend fun sendMessage(params: Map<String, Any?>, userId: String, userName: String ,userSymbol: String): Boolean
+    /**
+     * Method for adding message to chat room from parsed JSON message sent by client. Method also checks if user is able to
+     * send messages in chat room and if message contains all values needed to do operation
+     *
+     * @param params Parsed JSON message into [Map]<[key, value]>
+     * @param userId ID of user that is sending message
+     * @param userName Username
+     * @param userSymbol Symbol code of user's symbol
+     * @return True if message was successfully parsed and sent to other users else false
+     */
+    suspend fun sendMessage(params: Map<String, Any?>, userId: String, userName: String, userSymbol: String): Boolean
     {
         val id = params["_id"] as? String ?: return false
 
@@ -197,6 +270,13 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
         return true
     }
 
+    /**
+     * Method that sends messages request by user in parsed JSON message. Method also checks if user is in given
+     * chat room and if message contains everything required to fetch messages.
+     *
+     * @param params  Parsed JSON message into [Map]<[key, value]>
+     * @param userId ID of user that is fetching messages
+     */
     suspend fun fetchMessages(params: Map<String, Any?>, userId: String)
     {
         val id = params["_id"] as? String ?: return
@@ -208,6 +288,7 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
 
         messages = messages.sortedBy { it._id }
 
+        //begging of chat was reached so adding special message that indicates that there are no more messages
         if(messages.isEmpty() || messages.first()._id == 0L)
         {
             val tmp = messages.toMutableList()

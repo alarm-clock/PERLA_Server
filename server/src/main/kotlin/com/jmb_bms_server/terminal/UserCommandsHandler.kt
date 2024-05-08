@@ -1,3 +1,8 @@
+/**
+ * @file: UserCommandsHandler.kt
+ * @author: Jozef Michal Bukas <xbukas00@stud.fit.vutbr.cz,jozefmbukas@gmail.com>
+ * Description: File containing UserCommandsHandler class
+ */
 package com.jmb_bms_server.terminal
 
 import com.jmb_bms_server.data.location.Location
@@ -17,8 +22,19 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.random.Random
 
+/**
+ * Class implementing all user related cmd line commands
+ *
+ * @property model Server model
+ */
 class UserCommandsHandler(private val model: TmpServerModel, private val server: NettyApplicationEngine) {
 
+    /**
+     * Method that prints user profile on stdout
+     *
+     * @param userProfile User profile that will be printed
+     * @param onlyThing Flag indicating if this profile will be only thing printed
+     */
     private fun printUser(userProfile: UserProfile, onlyThing: Boolean = true)
     {
         var entries = ""
@@ -36,6 +52,13 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
                 "Teams:\n" + entries +
                 if(onlyThing)"+---------------------------------------------------+" else "")
     }
+
+    /**
+     * Method that prints session status to stdout
+     *
+     * @param userSession Session that will be printed
+     * @param onlyThing Flag indicating if this session will be only thing printed
+     */
     private fun printSesionStatus(userSession: UserSession, onlyThing: Boolean = true)
     {
         println( (if(onlyThing)"+---------------------------------------------------+\n" else "") +
@@ -43,6 +66,11 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
                 "+---------------------------------------------------+")
     }
 
+    /**
+     * Method that prints user profile on stdout from cmd line command in [params]
+     *
+     * @param params Parsed cmd line command in [List] -> {printUser, userName}
+     */
     fun printAllUserInfo(params: List<String>?)
     {
         if(params == null)
@@ -66,6 +94,12 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
         }
         printSesionStatus(userSession,false)
     }
+
+    /**
+     * Method that prints all user information on stdout
+     *
+     * @param userProfile Profile that will be printed
+     */
     fun printAllUserInfo(userProfile: UserProfile)
     {
         printUser(userProfile,false)
@@ -79,6 +113,10 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
         printSesionStatus(userSession,false)
     }
 
+    /**
+     * Method that prints all user profiles on stdout
+     *
+     */
     fun printAllUsers()
     {
         model.userSet.forEach{
@@ -86,6 +124,11 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
+    /**
+     * Method that creates new user from cmd line command in [params]
+     *
+     * @param params Parsed cmd line command in [List]
+     */
     fun createUser(params: List<String>?)
     {
         if(params == null)
@@ -132,6 +175,11 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
         else printUser(newProfile)
     }
 
+    /**
+     * Method that deletes user from cmd line command in [params]
+     *
+     * @param params Parsed command line command in [List]: {deleteUser, userName}
+     */
     fun deleteUser(params: List<String>?)
     {
         if(params == null)
@@ -150,6 +198,13 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
 
     }
 
+    /**
+     * Method that edits attribute identified by [key] to new [value] in [profile]
+     *
+     * @param key [UserProfile] attribute that will be edited
+     * @param value New value that will be assigned to [key]
+     * @param profile [UserProfile] that will be edited
+     */
     suspend fun editVal(key: String, value: String, profile: UserProfile){
         when(key)
         {
@@ -205,6 +260,11 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
+    /**
+     * Method that updates user profile from cmd line command in [params]
+     *
+     * @param params Parsed command line command in [List] : {updateUser, username}
+     */
     fun updateUser(params: List<String>?)
     {
         if(params == null)
@@ -234,6 +294,11 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
+    /**
+     * Debug method that simulates user turning off location sharing.
+     *
+     * @param params Parsed cmd line command in [params]
+     */
     fun simTurnOffLocSh(params: List<String>?)
     {
         if( params == null)
@@ -256,6 +321,11 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
         println("Deleted user location and sent update to all connected users")
     }
 
+    /**
+     * Method that terminates websocket connection with user.
+     *
+     * @param params Parsed cmd line argument in [List]: {termConnection, userName}
+     */
     fun termConnection(params: List<String>?)
     {
         if( params == null)
@@ -287,6 +357,11 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
+    /**
+     * Debug method that simulates users movement on map by randomly adding or subtracting small random values from lat and long
+     *
+     * @param params Parsed cmd line command in [List]: {cmd, username, howManyTimes, delay}
+     */
     fun simMoveRandom(params: List<String>?) {
 
         if (params == null)

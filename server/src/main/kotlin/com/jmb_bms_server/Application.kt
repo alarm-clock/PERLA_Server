@@ -59,6 +59,7 @@ fun initalDialog(): InitDialogReturn
     }
 }
 
+/*
 fun readConfiguration(): Map<String, String>?
 {
     try {
@@ -95,6 +96,8 @@ fun a()
     println(a)
 }
 
+
+ */
 
 private var model: TmpServerModel? = null
 private var terminalSh: TerminalSh? = null

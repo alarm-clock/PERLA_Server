@@ -1,29 +1,30 @@
+/**
+ * @file: TerminalSh.kt
+ * @author: Jozef Michal Bukas <xbukas00@stud.fit.vutbr.cz,jozefmbukas@gmail.com>
+ * Description: File containing TerminalSh class
+ */
 package com.jmb_bms_server.terminal
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.jmb_bms_server.*
 import com.jmb_bms_server.MessagesJsons.Messages
-import com.jmb_bms_server.utils.Configuration
 import com.jmb_bms_server.utils.GetJarPath
-import com.jmb_bms_server.utils.Logger
-import com.typesafe.config.ConfigFactory
-import io.ktor.server.config.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
-import java.io.File
 import kotlin.concurrent.thread
-import kotlin.system.exitProcess
 
-class TerminalSh(private val model: TmpServerModel, ) {
+/**
+ * Class that runs terminal input, parses commands and opens server to outside connections
+ *
+ * @property model Server model
+ * @constructor Initializes command handlers with [model]
+ */
+class TerminalSh(private val model: TmpServerModel ) {
 
     private lateinit var server: NettyApplicationEngine
-
-    private fun getCommand(line: String) = line.substring(0, if(line.indexOf(' ') != -1) line.indexOf(' ') else line.length )
-
-    private fun getParameters(line: String): List<String> = line.split(Regex(" +"))
 
     lateinit var teamCommandsHandler : TeamCommandsHandler
     lateinit var pointCommandsHandler: PointCommandsHandler
@@ -44,8 +45,26 @@ class TerminalSh(private val model: TmpServerModel, ) {
         chatCommandsHandler = ChatCommandsHandler(model)
     }
 
+    /**
+     * Method that extracts command from string. Command is first continuous sequence of characters ended by whitespace character.
+     *
+     * @param line Line from which command will be extracted
+     * @return String with command
+     */
+    private fun getCommand(line: String) = line.substring(0, if(line.indexOf(' ') != -1) line.indexOf(' ') else line.length )
 
+    /**
+     * Method that splits string into [List]<[String]> with whitespace characters as delimiters.
+     *
+     * @param line Line that will be split
+     * @return [List]<[String]> created from [line]
+     */
+    private fun getParameters(line: String): List<String> = line.split(Regex(" +"))
 
+    /**
+     * Method that prints help on terminal
+     *
+     */
     private fun printHelp()
     {
         println("Usage: command [parameters]\nexit -> close all connections and turn off server\n" +
@@ -64,6 +83,16 @@ class TerminalSh(private val model: TmpServerModel, ) {
                 "teamLocSh [teamName] [on ? off] -> turns on/off location sharing to all users within team except team lead\n" +
                 "printAllTeams -> prints info about all teams\n" +
                 "printTeam [teamName] -> prints info about team identified by teamName\n" +
+
+                "printAllPoints -> prints all points\n" +
+                "printPoint [pointID] -> prints point identified by pointID\n" +
+                "deletePoint [pointID] -> deletes point identified by pointID\n" +
+                "updatePoint [pointID] [key value [key value [...]]] -> updates point's attributes identified by key with values\n" +
+
+                "createChat [chat_name] [userID [userID [... ?] ?] ?] -> create chat room with chat_name and users\n" +
+                "deleteChat [chatRoomID] -> deletes chat room identified by chatRoomId\n" +
+                "manageMembers [chatRoomId] [true ? false] [userId [userId [...]]] -> method that adds (true) or removes (false) users to/from chat room\n" +
+                "sendMessage [chatRoomName] [body] [of] [message] [...] ... -> command that sends message to chat room where message begins by first word after chat room name\n"+
                 "debug [on ? off] -> turns on/off debug commands\n" +
 
                 "\nDebug commands:\n"+
@@ -83,6 +112,15 @@ class TerminalSh(private val model: TmpServerModel, ) {
         return map["opCode"] as? Int
     }
 
+    /**
+     * Method that parses string from input into [List]<[String]> and checks if command has right number of arguments
+     *
+     * @param line String that will be parsed
+     * @param numsOfParams Expected number of parameters
+     * @param failCondition Closure that takes two parameters: expected -> expected number of parameters, real -> real number of parameters,
+     * and should return true if number of arguments doesn't match number of expected arguments
+     * @return String parsed into [List]<[String]> or null if number of arguments is incorrect
+     */
     private fun parseParams(line: String, numsOfParams: Int, failCondition: ((expected: Int,real: Int)-> Boolean)) : List<String>?
     {
         val params = getParameters(line)
@@ -90,6 +128,10 @@ class TerminalSh(private val model: TmpServerModel, ) {
                else params
     }
 
+    /**
+     * Method that sends close messages to all clients, then stops server and sets [run] to false.
+     *
+     */
     private fun exit()
     {
         runBlocking {
@@ -127,6 +169,10 @@ class TerminalSh(private val model: TmpServerModel, ) {
         model.userSet.find { it.userName.get() == "Jozef" }?.connected?.set(false)
     }
 
+    /**
+     * Method that turns on/off debug mode in terminal. Debug mode adds few debug commands.
+     * @param params Parsed command line command in [List]
+     */
     private fun debug(params: List<String>?)
     {
         if(params == null)
@@ -167,6 +213,11 @@ class TerminalSh(private val model: TmpServerModel, ) {
 
     }
 
+    /**
+     * Method that parses command taken from stdin and invokes correct method that changes server state
+     *
+     * @param line String from stdin that will be parsed
+     */
     private fun parseCommand(line: String)
     {
         val command = getCommand(line)
@@ -185,6 +236,7 @@ class TerminalSh(private val model: TmpServerModel, ) {
                 "createTeam" -> teamCommandsHandler.createTeam(parseParams(line,0){_ ,real -> real != 6 && real != 4 })
                 "deleteTeam" -> teamCommandsHandler.deleteTeam(parseParams(line,2){ expected, real -> real != expected })
                 "updateTeam" -> teamCommandsHandler.updateTeam(parseParams(line,3){ expected ,real -> real < expected})
+                "teamLocSh" -> teamCommandsHandler.teamLocSh(parseParams(line,3){expected, real -> real != expected })
                 "addUsersToTeam" -> teamCommandsHandler.addUsersOrTeamsToTeam(parseParams(line,3){ expected, real -> real < expected },true)
                 "removeUsersFromTeam" -> teamCommandsHandler.addUsersOrTeamsToTeam(parseParams(line,3){ expected, real -> real < expected },false)
                 "printAllTeams" -> teamCommandsHandler.printAllTeams()
@@ -244,6 +296,10 @@ class TerminalSh(private val model: TmpServerModel, ) {
         }
     }
 
+    /**
+     * Method that starts thread which will parse user's input and commands
+     *
+     */
     private fun run()
     {
         println("Entering program shell... Enter help to list available commands")
@@ -260,7 +316,11 @@ class TerminalSh(private val model: TmpServerModel, ) {
         }
     }
 
-
+    /**
+     * Method that truly starts server by starting and opening embedded server for connection and starts thread that will
+     * parse users input. Main thread will check every 10 seconds if server is still running.
+     *
+     */
     fun startApplication()
     {
         var res: NettyApplicationEngine

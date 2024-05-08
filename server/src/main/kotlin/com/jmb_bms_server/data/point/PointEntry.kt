@@ -1,3 +1,8 @@
+/**
+ * @file: PointEntry.kt
+ * @author: Jozef Michal Bukas <xbukas00@stud.fit.vutbr.cz,jozefmbukas@gmail.com>
+ * Description: File containing PointEntry class
+ */
 package com.jmb_bms_server.data.point
 
 import com.jmb_bms_server.customSerializers.AtomicReferenceSerializer
@@ -5,10 +10,22 @@ import com.jmb_bms_server.customSerializers.CopyOnWriteArrSerializer
 import com.jmb_bms_server.data.location.Location
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
-import org.bson.types.ObjectId
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * Class that represents point on a map.
+ *
+ * @property _id ID of a point
+ * @property name Points name
+ * @property ownerId UserId of user that created and owns points or ALL if anyone can edit point.
+ * @property ownerName Point owners name
+ * @property location [Location] where is point located
+ * @property description Points description
+ * @property symbol Symbol code of symbol that is representing given point
+ * @property files [CopyOnWriteArrayList] with attached file names
+ * @property menusString Formatted string used in client to initialize symbol creation menu
+ */
 @Serializable
 class PointEntry(
 
@@ -40,6 +57,12 @@ class PointEntry(
     val menusString: AtomicReference<String> = AtomicReference("")
 ){
 
+    /**
+     * Method that creates new instance of [StorablePointEntry] initialized with values from [PointEntry] instance.
+     * [StorablePointEntry] can be stored in mongo collection
+     *
+     * @return Initialized [StorablePointEntry] instance
+     */
     fun getStorablePointEntry() = StorablePointEntry(
         _id.get(),
         name.get(),
@@ -52,6 +75,12 @@ class PointEntry(
         ownerName.get()
     )
 
+    /**
+     * Update values of current [PointEntry] instance with values from [entry]
+     *
+     * @param entry [StorablePointEntry] that will update values of current [PointEntry] instance
+     * @return Reference on updated [PointEntry] instance
+     */
     fun updateValuesFromStorablePointEntry(entry: StorablePointEntry): PointEntry
     {
         _id.set(entry._id)

@@ -1,3 +1,8 @@
+/**
+ * @file: UserConnectionHandler.kt
+ * @author: Jozef Michal Bukas <xbukas00@stud.fit.vutbr.cz,jozefmbukas@gmail.com>
+ * Description: File containing UserConnectionHandler class
+ */
 package com.jmb_bms_server
 
 import com.google.gson.Gson
@@ -19,6 +24,13 @@ import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
+/**
+ * Class that stores all connection data, connected user profile and handles reaction to all messages received from client
+ *
+ * @property session [DefaultWebSocketSession] with client
+ * @property serverModel Server model
+ * @property terminalSh [TerminalSh] to access model methods
+ */
 class UserConnectionHandler(val session: DefaultWebSocketSession, val serverModel: TmpServerModel, private val terminalSh: TerminalSh) {
 
     private var connectionState = ConnectionState.NOT_CONNECTED
@@ -31,6 +43,12 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
     private var userInitiatedClose = false
 
+    /**
+     * Method that parses received JSON string into [Map]<[String],[Any]?>
+     *
+     * @param json Message that will be parsed
+     * @return Parsed message
+     */
     private fun parseServerJson(json: String): Map<String, Any?>
     {
         val gson = Gson()
@@ -39,13 +57,29 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         return map
     }
 
-
+    /**
+     * Method that returns messages opCode
+     *
+     * @param map Parsed message
+     * @return opCode or null if something unknown was sent
+     */
     private fun getOpcode(map: Map<String, Any?>): Int? {
         return (map["opCode"] as? Double)?.toInt()
     }
 
+    /**
+     * Method that returns teamID from parsed message
+     *
+     * @param map Parsed message
+     * @return TeamID or null if there is no teamID
+     */
     private fun getTeamId(map: Map<String, Any?>): String? = map["_id"] as? String
 
+    /**
+     * Method that will run coroutine on IO context
+     *
+     * @param code Closure that will be run
+     */
     private fun coroutineRun(code: suspend () -> Unit)
     {
         CoroutineScope(Dispatchers.IO).launch {
@@ -53,6 +87,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that relays updated location
+     *
+     * @param params Parsed JSON message
+     */
     private fun relayUpdatedLocation(params: Map<String, Any?>)
     {
         val lat = params["lat"] as? Double
@@ -84,6 +123,10 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that relays user disconnection
+     *
+     */
     private fun handleDiscRelay()
     {
         thread {
@@ -95,6 +138,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that updates model with values indicating that user was disconnected and relays is to other users
+     *
+     * @param params Parsed JSON message
+     */
     private fun disconnectUserAndRelayIt(params: Map<String, Any?>)
     {
         userInitiatedClose = true
@@ -109,6 +157,12 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         serverModel.tmpTransactionFiles.find { it.owner == userProfile._id.get().toString() }?.failTransactionNoWait()
     }
 
+    /**
+     * Method that gets team and checks if user is team leader
+     *
+     * @param teamId ID of team that will be returned
+     * @return [TeamEntry] on success else null
+     */
     private fun getTeamByIdAndCheckLead(teamId: String): TeamEntry?
     {
         val team = serverModel.teamsSet.find { it._id.get().toString() == teamId } ?: return null
@@ -119,7 +173,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         return team
     }
 
-
+    /**
+     * Method that handles user updating his profile
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleUserUpdatingProfile(params: Map<String, Any?>)
     {
         val newUserName = params[userProfile::userName.name] as? String
@@ -151,6 +209,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Handle leader creating team
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleLeaderCreatingTeam(params: Map<String, Any?>)
     {
         val topTeamId = params["_id"] as? String
@@ -178,6 +241,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handles team leader deleting his team
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleLeaderDeletingHisTeam(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -202,6 +270,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handles addition or removal of users from team
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleMemberAddOrDel(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -223,6 +296,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handles team leader change
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleTeamLeaderChange(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -239,6 +317,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handles team's profile update
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleTeamUpdate(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -254,6 +337,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     *  Method that handles team leader's request to turn on/off location sharing to all users in team
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleAllTurnOnLocReq(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -269,6 +357,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handles team leader's request to toggle members location sharing
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleMemberLocationSharingReq(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -291,9 +384,14 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handles location update for a team
+     *
+     * @param params Parsed JSON message
+     * @param wholeMessage Plain message that will be sent to other clients
+     */
     private fun handleTeamLocUpdate(params: Map<String, Any?>,wholeMessage: String)
     {
-        //TODO add location storing for team and indication that it is working
 
         Logger.log("handling team location update",userProfile.userName.get())
 
@@ -306,11 +404,16 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
         coroutineRun {
             serverModel.userSessionsSet.forEach {
-                it.session.get()?.send(Frame.Text(wholeMessage))
+              if(it.userId.get().toString() != userProfile._id.get().toString()) it.session.get()?.send(Frame.Text(wholeMessage))
             }
         }
     }
 
+    /**
+     * Method that fails transaction with given [id]
+     *
+     * @param id ID of transaction that will be failed
+     */
     private fun failTransaction(id: String?)
     {
         val transaction = serverModel.tmpTransactionFiles.find { it.id == id } ?: return
@@ -318,6 +421,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         transaction.failTransactionNoWait()
     }
 
+    /**
+     * Method that handles point creation
+     *
+     * @param params Parsed JSON message
+     */
     private fun handlePointCreation(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -399,6 +507,12 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             }
         }
     }
+
+    /**
+     * Method that handles point deletion
+     *
+     * @param params Parsed JSON message
+     */
     private fun handlePointDeletion(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -414,6 +528,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handles point update
+     *
+     * @param params Parsed JSON message
+     */
     private fun handlePointUpdate(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -427,6 +546,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handles point syncing request from client
+     *
+     * @param params
+     */
     private fun handleSyncRequest(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -442,12 +566,22 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handle failed transaction ack from user
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleFailedTransactionAcknowledgement(params: Map<String, Any?>)
     {
         val transactionId = params["transactionId"] as? String ?: return
         serverModel.tmpTransactionFiles.find { it.id == transactionId }?.failTransaction()
     }
 
+    /**
+     * Method that creates chat room
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleChatRoomCreation(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -460,6 +594,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method handles chat room deletion
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleChatRoomDeletion(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -467,6 +606,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Handle manage chat room users
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleManageChatRoomUsers(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -474,6 +618,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Handle chat room owner change
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleChatRoomOwnerChange(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -481,6 +630,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handles message sent by user into chat room
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleSentMessage(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -491,7 +645,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             if(transaction != null && transaction.transactionState.get() != TransactionState.IN_PROGRESS)
             {
                 transaction.failTransaction()
-                //TODO send fail to user
+
                 return@coroutineRun
             }
 
@@ -500,7 +654,6 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             if(!res)
             {
                 transaction?.failTransaction()
-                //TODO send fail to user
 
             } else
             {
@@ -509,6 +662,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that handles messages fetch request
+     *
+     * @param params Parsed JSON message
+     */
     private fun handleFetchMessages(params: Map<String, Any?>)
     {
         coroutineRun {
@@ -516,6 +674,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that parses text frame and based on the message opcode invokes correct method. Second part of router
+     *
+     * @param frame Received text frame from client
+     */
     private fun parseTextFrame(frame: Frame.Text)
     {
         val params = parseServerJson(frame.readText())
@@ -551,6 +714,12 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that parses close frame, sets all required attributes in model so that it indicates that user si no longer
+     * connected to server
+     *
+     * @param frame Close frame
+     */
     private fun parseCloseFrame(frame: Frame.Close) {
         userInitiatedClose = true
         if (!sentBye)
@@ -566,6 +735,11 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         Logger.log("${userProfile._id.get()} Close reason: ${frame.readReason()?.message}\nCode: ${frame.readReason()?.code}",userProfile.userName.get())
     }
 
+    /**
+     * Method that handles incoming frame from client
+     *
+     * @param frame Incoming frame
+     */
     private fun handleFrame(frame: Frame)
     {
         when(frame)
@@ -576,6 +750,16 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
+    /**
+     * Method that check message opCode and type
+     *
+     * @param frame Incoing frame
+     * @param type Expected type
+     * @param opCode Expected opcode
+     * @param errorLambda
+     * @receiver Closure that will be invoked when error occurs
+     * @return True on success else false
+     */
     private suspend fun checkMsgTypeAndOpCode(frame: Frame, type: FrameType, opCode: Int, errorLambda: suspend () -> Unit): Boolean
     {
         if(frame.frameType != type)
@@ -591,6 +775,13 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         return true
     }
 
+    /**
+     * Method that creates new user profile and stores it in DB
+     *
+     * @param userName
+     * @param symbolCode
+     * @return True on success else false
+     */
     private suspend fun createUserAndStoreItInDb(userName: String, symbolCode: String): Boolean
     {
         val newProfile = UserProfile(
@@ -631,6 +822,14 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         return true
     }
 
+    /**
+     * Method that checks connecting user in database and checks if user with same ID doesn't have active connection
+     *
+     * @param id Connecting user's ID
+     * @param userName His username
+     * @param symbolCode His symbol code
+     * @return True on success else false
+     */
     private suspend fun findAndCheckUserById(id: ObjectId, userName: String, symbolCode: String): Boolean
     {
         val profile = serverModel.checkAndAddReconectedUser(
@@ -667,6 +866,12 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         return true
     }
 
+    /**
+     * Method that checks if user profile is valid and stores it DB
+     *
+     * @param params Parsed JSON message
+     * @return True on success else false
+     */
     private suspend fun checkUserProfileAndStoreIt(params: Map<String, Any?>): Boolean
     {
 
@@ -690,7 +895,12 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
-
+    /**
+     * Method that handles initial handshake between client and server. It also stores user profile in DB. If error
+     * occurs it will set [connectionState] to [ConnectionState.ERROR]. If everythign goes well then it will set [connectionState]
+     * to [ConnectionState.CONNECTED]
+     *
+     */
     private suspend fun initSequence()
     {
         var frame = session.incoming.receive()
@@ -727,9 +937,12 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         //connectionState = ConnectionState.CONNECTED
     }
 
+    /**
+     * Method that sends all user profiles of users that are connected, teams and chat rooms of which user is member to user
+     *
+     */
     private suspend fun sendProfilesAndPoints()
     {
-        //TODO add points here
 
         Logger.log("Sending profiles and chats to user",userProfile.userName.get())
         serverModel.userSet.forEach { profile ->
@@ -747,6 +960,10 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
         Logger.log("Finished sending users and chats to user",userProfile.userName.get())
     }
+
+    /**
+     * Method that sends all other clients this user's profile
+     */
     private suspend fun notifyOtherUsers()
     {
         serverModel.userSessionsSet.forEach {
@@ -754,11 +971,10 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
         }
     }
 
-    //vyuzivanie 15
-    //popis stavby rodinny dom
-    //druh stavby 10
-    //dnesny tum
-    @OptIn(ExperimentalCoroutinesApi::class)
+    /**
+     * Method that handles whole users connection from initial state to its closure by either client or server.
+     *
+     */
     suspend fun handleConnection()
     {
        //no
@@ -792,6 +1008,9 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             if(session.isActive)
             {
                 try {
+                    //sending special close reason to client in case this is bug when client doesn't respond to ping
+                    //message even though he is connected. If this is the case then this message should indicate
+                    //to him that he should reconnect
                     if(e.message == "Ping timeout")
                     {
                         session.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER,"${e.message}"))

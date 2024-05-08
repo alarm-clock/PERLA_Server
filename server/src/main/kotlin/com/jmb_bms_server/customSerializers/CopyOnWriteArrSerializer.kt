@@ -1,14 +1,23 @@
+/**
+ * @file: CopyOnWriteArrSerializer.kt
+ * @author: Jozef Michal Bukas <xbukas00@stud.fit.vutbr.cz,jozefmbukas@gmail.com>
+ * Description: File containing CopyOnWriteArrSerializer class
+ */
 package com.jmb_bms_server.customSerializers
 
-import kotlinx.serialization.json.JsonEncoder
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializer
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.JsonPrimitive
 import java.util.concurrent.CopyOnWriteArrayList
 
+/**
+ * Class for serializing [CopyOnWriteArrayList] class
+ *
+ * @param T Data type of values stored in [CopyOnWriteArrayList]
+ * @property valueSerializer Serializer
+ * @constructor Create empty Copy on write arr serializer
+ */
 @Serializer(forClass = CopyOnWriteArrayList::class)
 class CopyOnWriteArrSerializer<T>(private val valueSerializer: KSerializer<List<T>>
 ) : KSerializer<CopyOnWriteArrayList<T>>

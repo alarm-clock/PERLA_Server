@@ -1,3 +1,8 @@
+/**
+ * @file: TeamCommandsHandler.kt
+ * @author: Jozef Michal Bukas <xbukas00@stud.fit.vutbr.cz,jozefmbukas@gmail.com>
+ * Description: File containing TeamCommandsHandler class
+ */
 package com.jmb_bms_server.terminal
 
 import com.jmb_bms_server.data.location.Location
@@ -14,8 +19,19 @@ import org.bson.types.ObjectId
 import java.lang.NumberFormatException
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * Class that implements all teams methods
+ *
+ * @property model server model, used for database operations and access user sessions
+ * @property server
+ */
 class TeamCommandsHandler(private val model: TmpServerModel, private val server: NettyApplicationEngine) {
 
+    /**
+     * Method that sends [message] to all users
+     *
+     * @param message JSON string that can be parsed by client
+     */
     private suspend fun sendJsonToAllUsers(message: String)
     {
         model.userSessionsSet.forEach {
@@ -23,7 +39,13 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
-    fun createTeam(leadersName: String,parameters: Map<String, Any?>)
+    /**
+     * Method that creates team from parameters
+     *
+     * @param leadersName Name of user that is creating team
+     * @param parameters Parsed JSON message
+     */
+    fun createTeam(leadersName: String, parameters: Map<String, Any?>)
     {
         val name = parameters["teamName"] as? String ?: throw MissingParameter("Could not extract team name")
         val icon = parameters["teamIcon"] as? String ?: throw MissingParameter("Could not extract team icon")
@@ -46,6 +68,12 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
 
     }
 
+    /**
+     * Method that creates team from cmd line command parsed into [params]
+     *
+     * @param params Parsed cmd line command: {createTeam, teamName, {teamSymbol ? def}, team leader userName, {lat, long} ? }
+     * @return True on success else false
+     */
     fun createTeam(params: List<String>?): Boolean
     {
         if(params == null)
@@ -62,13 +90,14 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
             println("User with name ${params[3]} doesn't exists")
             return false
         }
-        //invertovane farby // invertovane farby  nerob cervene farby //sablony sprav aby sa dali pridavat
+
         val newEntry = TeamEntry().apply {
             this.teamName.set(teamName)
             this.teamIcon.set(symbolCode)
             this.teamLead.set(leadersName)
         }
 
+        // location was also present in command
         if ( params.size == 5)
         {
             val lat: Double; val long: Double
@@ -90,7 +119,7 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         return runBlocking{
             if( !model.addNewTeam(newEntry) )
             {
-                println("Team with username ${params[1]} already exists")
+                println("Team with name ${params[1]} already exists")
                 return@runBlocking false
             }
             sendJsonToAllUsers(Messages.teamProfile(newEntry))
@@ -99,11 +128,21 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
 
     }
 
+    /**
+     * Method that deletes team identified by its name
+     *
+     * @param teamName Name of team that is deleted
+     */
     fun deleteTeam(teamName: String)
     {
         deleteTeam(listOf("",teamName))
     }
 
+    /**
+     * Method that deletes team from cmd line command parsed into [params]
+     *
+     * @param params Parsed cmd line command: {deleteTeam, teamName}
+     */
     fun deleteTeam(params: List<String>?)
     {
         if( params == null)
@@ -124,6 +163,14 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
+    /**
+     * Method that updates team profile's attribute identified by [key] with [value]
+     *
+     * @param key Attribute name from [TeamEntry] class
+     * @param value New value
+     * @param teamEntry Team that is being updated
+     * @return True on success otherwise false
+     */
     private suspend fun editTeamValues(key: String, value: String, teamEntry: TeamEntry): Boolean
     {
         when(key)
@@ -138,7 +185,7 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
                     return false
                 }
                 teamEntry.teamName.set(value)
-                //model.updateTeam(teamEntry.teamId.get() ?: ObjectId("E"),Updates.set(TeamEntry::teamName.name,value))
+
                 model.teamCollection.findOneAndUpdate(
                     Filters.eq(TeamEntry::_id.name,teamEntry._id.get()),
                     Updates.set(TeamEntry::teamName.name,value)
@@ -147,7 +194,7 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
             }
             TeamEntry::teamIcon.name -> {
                 teamEntry.teamIcon.set(value)
-                //model.updateTeam(teamEntry.teamId.get() ?: ObjectId("E"),Updates.set(TeamEntry::teamIcon.name,value))
+
 
                 model.teamCollection.findOneAndUpdate(
                     Filters.eq(TeamEntry::_id.name,teamEntry._id.get()),
@@ -198,7 +245,6 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
                 if( teamEntry.teamLead.get().toString() == newLeader._id.get().toString()) return true
 
                 teamEntry.teamLead.set(newLeader._id.get())
-                //TODO update team leader in database
 
                 if(newLeader.teamEntry.get().find { it == teamEntry._id.get() } == null)
                     model.addUserToTeam(newLeader,teamEntry)
@@ -213,21 +259,46 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         return true
     }
 
+    /**
+     * Method that updates team's team leader
+     *
+     * @param teamName Team name
+     * @param userName Username of user that will be new team leader
+     */
     fun updateLeader(teamName: String, userName: String)
     {
         updateTeam(listOf("",teamName, TeamEntry::teamLead.name,userName))
     }
 
+    /**
+     * Method that updates teams name and icon
+     *
+     * @param teamName Current team name
+     * @param teamIcon New team icon
+     * @param newTeamName New team name
+     */
     fun updateTeam(teamName: String, teamIcon: String, newTeamName: String)
     {
         updateTeam(listOf("",teamName, TeamEntry::teamName.name,newTeamName, TeamEntry::teamIcon.name,teamIcon))
     }
 
-    fun updateLocation(teamName: String,lat: String, long: String)
+    /**
+     * Method that updates teams location
+     *
+     * @param teamName Team name
+     * @param lat Latitude
+     * @param long Longitude
+     */
+    fun updateLocation(teamName: String, lat: String, long: String)
     {
         updateTeam(listOf("",teamName, Location::lat.name,lat, Location::long.name,long))
     }
 
+    /**
+     * Method that updates team from parsed cmd line command in [params]
+     *
+     * @param params Parsed cmd line command in [List]: {updateTeam, teamName, {key, value {key, value {...}}}}
+     */
     fun updateTeam(params: List<String>?)
     {
         if(params == null)
@@ -258,11 +329,24 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
+    /**
+     * Method that adds or removes users or teams from team
+     *
+     * @param userName Username or team name of user/team that will be added
+     * @param teamName Team name of which members list will be updated
+     * @param adding Flag indicating if users are being added or removed
+     */
     fun addUsersOrTeamsToTeam(userName: String, teamName: String, adding: Boolean)
     {
         addUsersOrTeamsToTeam(listOf("",teamName,userName),adding)
     }
 
+    /**
+     * Method that adds or removes users/teams to/from team from cmd line command in [params]
+     *
+     * @param params Parsed cmd line command in [List]: {addUsersToTeam, teamName, userName, userName, ...}
+     * @param adding Flag indicating if method will be adding or removing users
+     */
     fun addUsersOrTeamsToTeam(params: List<String>?, adding: Boolean)
     {
         if(params == null)
@@ -316,6 +400,13 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
+    /**
+     * Method that prints team's profile to stdout
+     *
+     * @param teamEntry Team profile
+     * @param max Number of teams (used when printing multiple teams)
+     * @param index Current index (used when printing multiple teams)
+     */
     private fun printTeamInfo(teamEntry: TeamEntry, max: Int = 0, index: Int = -1)
     {
         var entries = ""
@@ -341,6 +432,11 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         )
     }
 
+    /**
+     * Method that prints team profile from cmd line command in [params] to stdout
+     *
+     * @param params Parsed cmd line command in [List]: {printTeam, team name}
+     */
     fun printTeam(params: List<String>?)
     {
         if(params == null)
@@ -358,6 +454,10 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         printTeamInfo(team)
     }
 
+    /**
+     * Method that prints all teams on stdout
+     *
+     */
     fun printAllTeams()
     {
         val max = model.teamsSet.size
@@ -366,6 +466,12 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
+    /**
+     * Method that sends turn on/off location message to all team members
+     *
+     * @param teamName Name of team whose members will receive message
+     * @param on Flag indicating if location sharing will be turned on or off
+     */
     fun teamLocSh(teamName: String, on: Boolean)
     {
         val teamMates = model.userSet.filter { profile -> profile.teamEntry.get()?.find { it.toString() == teamName } != null }
@@ -381,6 +487,11 @@ class TeamCommandsHandler(private val model: TmpServerModel, private val server:
         }
     }
 
+    /**
+     * Method that turns on/off location sharing for all team members
+     *
+     * @param params Parsed cmd line command in [List]: {teamLocSh, teamName, {on ? off}}
+     */
     fun teamLocSh(params: List<String>?)
     {
         if(params == null)
