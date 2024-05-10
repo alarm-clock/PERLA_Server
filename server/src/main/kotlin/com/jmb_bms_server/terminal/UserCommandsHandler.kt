@@ -417,4 +417,21 @@ class UserCommandsHandler(private val model: TmpServerModel, private val server:
             }
         }
     }
+
+
+    fun toggleLocSh(userName: String)
+    {
+        val userId = model.userSet.find { it.userName.get() == userName }?._id?.get()?.toString()
+        if(userId == null)
+        {
+            println("No user with given name exist")
+            return
+        }
+
+        runBlocking {
+            model.userSessionsSet.find { it.userId.get().toString() == userId }?.session?.get()
+                ?.send(Frame.Text(Messages.requestLocShChange()))
+        }
+        println("Sent toggle message")
+    }
 }

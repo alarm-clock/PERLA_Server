@@ -1,5 +1,9 @@
+/**
+ * @file: Application.kt
+ * @author: Jozef Michal Bukas <xbukas00@stud.fit.vutbr.cz,jozefmbukas@gmail.com>
+ * Description: File containing Main function of server
+ */
 package com.jmb_bms_server
-
 
 import com.jmb_bms_server.data.counter.Counters
 import com.jmb_bms_server.data.point.StorablePointEntry
@@ -7,15 +11,11 @@ import com.jmb_bms_server.data.team.StorableTeamEntry
 import com.jmb_bms_server.data.user.StorableUserProfile
 import com.jmb_bms_server.terminal.TerminalSh
 import com.jmb_bms_server.utils.*
-import io.ktor.network.tls.certificates.*
 import io.ktor.server.application.*
-import io.ktor.server.engine.*
 import io.ktor.server.routing.*
 import io.ktor.server.sessions.*
 import io.ktor.server.websocket.*
 import kotlinx.coroutines.*
-import java.io.File
-import java.io.FileReader
 import java.time.Duration
 import java.util.concurrent.Executors
 import java.util.concurrent.locks.ReentrantLock
@@ -28,6 +28,11 @@ val threadPool = Executors.newSingleThreadExecutor {
         task -> Thread(task, "my-background-thread")
 }.asCoroutineDispatcher()
 
+/**
+ * Function that prints and parses initial dialog
+ *
+ * @return [InitDialogReturn] value representing what options user picked
+ */
 fun initalDialog(): InitDialogReturn
 {
     while(true)
@@ -59,55 +64,21 @@ fun initalDialog(): InitDialogReturn
     }
 }
 
-/*
-fun readConfiguration(): Map<String, String>?
-{
-    try {
-        val conf = mutableMapOf<String, String>()
-
-        val file = File("${GetJarPath.currentWorkingDirectory}/config/conf.txt")
-
-        FileReader(file).forEachLine {
-            val trimmedLine = it.trim()
-            if(trimmedLine.isNotEmpty() && trimmedLine[0] != '!' && trimmedLine.isNotBlank())
-            {
-                val pair = trimmedLine.split(":", limit = 2)
-                conf[pair[0].trim()] = pair[1].trim()
-            }
-        }
-
-        Configuration.port = conf["port"]!!.toInt()
-        Configuration.mongo = conf["mongo"]!!
-
-        return conf
-    } catch (e:Exception){
-        e.printStackTrace()
-        println("Unable to read conf.txt. Stopping server...")
-        return null
-    }
-
-}
-fun a()
-{
-    val a =commandLineEnvironment(
-        arrayOf("-config=${GetJarPath.currentWorkingDirectory}/config/application.conf")
-    ).config.property("database.connectionString").getString()
-
-    println(a)
-}
-
-
+/**
+ * Server model. It must be global variable because otherwise it could not be passed to handler and it is singleton
  */
-
 private var model: TmpServerModel? = null
+
+/**
+ * [TerminalSh] instance
+ */
 private var terminalSh: TerminalSh? = null
 
-//@OptIn(DelicateCoroutinesApi::class)
+/**
+ * Main function of whole server
+ *
+ */
 fun main() {
-
-   //a()
-
-    //readConfiguration() ?: return
 
     val input = initalDialog()
 
@@ -129,7 +100,7 @@ fun main() {
 
     model = TmpServerModel(profileCollection,teamsCollection,pointCollection,database,input.restore)
 
-    generateCertificate()
+    //generateCertificate()
 
     terminalSh = TerminalSh(model!!)
 
@@ -137,6 +108,10 @@ fun main() {
 
 }
 
+/**
+ * Method that holds routing server block.
+ *
+ */
 fun Application.module() {
 
 

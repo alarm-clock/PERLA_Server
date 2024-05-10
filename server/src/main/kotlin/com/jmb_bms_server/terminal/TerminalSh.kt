@@ -74,6 +74,7 @@ class TerminalSh(private val model: TmpServerModel ) {
                 "updateUser [username] [key value [key value [...]]] -> updates user fields with same key\n" +
                 "termConnection [userName] -> terminates user connection but leaves his entry in database\n" +
                 "printAllUsers -> prints all user profiles and session data\n" +
+                "toggleUserLocSh [userName] -> toggles users location sharing remotely \n"+
 
                 "createTeam [teamName] [teamSymbol ? def] [team leader userName] [[lat] [long] ? ] -> creates team with name, icon, and team leader\n" +
                 "deleteTeam [teamName] -> deletes team with given name and updates user profiles\n" +
@@ -96,7 +97,7 @@ class TerminalSh(private val model: TmpServerModel ) {
                 "debug [on ? off] -> turns on/off debug commands\n" +
 
                 "\nDebug commands:\n"+
-                "turnOnLocUp [userName] [on ? off] -> turns on users location sharing remotely \n"+
+
                 "simTurnOffLocSh [userName] -> simulates that user stopped sharing location\n" +
                 "simMoveRandom [userName] [how many moves] [interval] -> moves user +-2 meters at random, informs where user was moved")
     }
@@ -233,6 +234,7 @@ class TerminalSh(private val model: TmpServerModel ) {
                 "updateUser" -> userCommandsHandler.updateUser(parseParams(line, 3) { expected, real -> real < expected })
                 "printAllUsers" -> userCommandsHandler.printAllUsers()
                 "termConnection" -> userCommandsHandler.termConnection(parseParams(line, 2) { expected, real -> real != expected })
+                "toggleUserLocSh" -> userCommandsHandler.toggleLocSh(parseParams(line,2){expected, real -> expected != real }?.get(1) ?: "")
                 "createTeam" -> teamCommandsHandler.createTeam(parseParams(line,0){_ ,real -> real != 6 && real != 4 })
                 "deleteTeam" -> teamCommandsHandler.deleteTeam(parseParams(line,2){ expected, real -> real != expected })
                 "updateTeam" -> teamCommandsHandler.updateTeam(parseParams(line,3){ expected ,real -> real < expected})
@@ -249,6 +251,8 @@ class TerminalSh(private val model: TmpServerModel ) {
                     }
                 }
                 "updatePoint" -> pointCommandsHandler.updatePoint(parseParams(line,2){expected, real -> real < expected })
+                "printAllChatRooms" -> chatCommandsHandler.printAllChats()
+                "printChatRoom" -> chatCommandsHandler.printChatRoom(parseParams(line,2){expected, real -> expected != real }?.get(1))
                 "createChat" -> chatCommandsHandler.createChatRoom(parseParams(line,3){expected, real -> real < expected  })
                 "deleteChat" -> chatCommandsHandler.deleteChatRoom(parseParams(line,2){expected, real -> expected != real})
                 "manageMembers" -> chatCommandsHandler.manageChatUsers(parseParams(line,4){expected, real -> real < expected })

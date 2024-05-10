@@ -14,6 +14,7 @@ import io.ktor.websocket.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.bson.types.ObjectId
 
 /**
@@ -50,6 +51,59 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
             params["memberIds"] = members
 
             createChatRoom(params,"admin")
+        }
+    }
+
+    /**
+     * Method that prints chat [room] on stdout
+     *
+     * @param room Room that will be printed
+     */
+    private fun printRoom(room: StorableChat){
+        println("+-------------------------------------+\n" +
+                "name: ${room.name}\n" +
+                "id: ${room._id.toString()}\n" +
+                "owner id: ${room.ownerId}\n" +
+                "owner name: ${model.userSet.find { profile -> profile._id.get().toString() == room.ownerId }?.userName?.get()}\n" +
+                "users:")
+        room.members.forEach {
+            val profile = model.userSet.find { profile -> profile._id.get().toString() == it }
+            if(profile != null)
+            {
+                println("   name: ${profile.userName.get()} -- id: ${profile._id.get().toString()}")
+            }
+        }
+    }
+
+    /**
+     * Method that prints all chat rooms
+     *
+     */
+    fun printAllChats()
+    {
+        runBlocking {
+            val rooms = model.chatDb.getAllChats() ?: return@runBlocking
+            rooms.forEach {
+                printRoom(it)
+            }
+        }
+    }
+
+    /**
+     * Method that prints chat room on stdout that is identified by [name]
+     *
+     * @param name
+     */
+    fun printChatRoom(name: String?)
+    {
+        if(name == null)
+        {
+            println("Wrong number of arguments")
+            return
+        }
+        runBlocking {
+            val room = model.chatDb.getRoomByName(name) ?: return@runBlocking
+            printRoom(room)
         }
     }
 
@@ -94,6 +148,8 @@ class ChatCommandsHandler(private val model: TmpServerModel) {
         }
         CoroutineScope(Dispatchers.IO).launch {
             val params = mutableMapOf<String, Any?>()
+
+            //val id = model.chatDb.getChatId(list[1]) ?: return@launch
 
             val id = model.chatDb.getChatId(list[1]) ?: return@launch
 

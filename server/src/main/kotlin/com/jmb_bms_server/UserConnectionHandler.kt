@@ -560,6 +560,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
 
             val otherUsersPoints = serverModel.pointSet.filter { it.ownerId.get().toString() != owner }
             if(otherUsersPoints.isNotEmpty()) session.send(Frame.Text(Messages.syncPointsMessage(otherUsersPoints.map { it._id.get().toString() })))
+            else session.send(Frame.Text(Messages.syncPointsMessage(listOf())))
             otherUsersPoints.forEach {
                 session.send(Frame.Text(Messages.pointEntry(it)))
             }
@@ -1003,7 +1004,7 @@ class UserConnectionHandler(val session: DefaultWebSocketSession, val serverMode
             }
         } catch (e: Exception)
         {
-            e.printStackTrace()
+            //e.printStackTrace()
             Logger.log("Error: ${e.message}",userProfile.userName.get(),9)
             if(session.isActive)
             {
